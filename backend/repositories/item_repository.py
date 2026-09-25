@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database.models import ShoppingItem, utcnow
@@ -50,7 +51,13 @@ class ItemRepository:
         res = await self.session.execute(stmt)
         return list(res.scalars().all())
 
-    async def get_by_id(self, user_id: str, item_id: str, include_deleted: bool = False) -> ShoppingItem | None:
+    async def get_by_id(
+        self,
+        user_id: str,
+        item_id: str,
+        include_deleted: bool = False,
+        for_update: bool = False,
+    ) -> ShoppingItem | None:
         """Fetch item strictly scoped by user_id and item_id."""
         conditions = [
             ShoppingItem.id == item_id,
@@ -60,6 +67,8 @@ class ItemRepository:
             conditions.append(ShoppingItem.deleted_at.is_(None))
 
         stmt = select(ShoppingItem).where(*conditions)
+        if for_update:
+            stmt = stmt.with_for_update()
         res = await self.session.execute(stmt)
         return res.scalar_one_or_none()
 
@@ -105,9 +114,22 @@ class ItemRepository:
             deleted_at=None,
         )
         self.session.add(item)
-        await self.session.commit()
-        await self.session.refresh(item)
-        return item, True
+        try:
+            await self.session.commit()
+            await self.session.refresh(item)
+            return item, True
+        except IntegrityError:
+            await self.session.rollback()
+            if client_mutation_id:
+                stmt = select(ShoppingItem).where(
+                    ShoppingItem.user_id == user_id,
+                    ShoppingItem.client_mutation_id == client_mutation_id,
+                )
+                res = await self.session.execute(stmt)
+                existing = res.scalar_one_or_none()
+                if existing:
+                    return existing, False
+            raise
 
     async def update_item(
         self,
@@ -117,7 +139,7 @@ class ItemRepository:
         updates: dict[str, Any],
     ) -> ShoppingItem:
         """Update item fields with optimistic concurrency locking."""
-        item = await self.get_by_id(user_id, item_id)
+        item = await self.get_by_id(user_id, item_id, for_update=True)
         if not item:
             raise ItemNotFoundError(item_id)
 
@@ -140,7 +162,7 @@ class ItemRepository:
         expected_version: int,
     ) -> ShoppingItem:
         """Toggle purchased status with optimistic locking and update purchased_at."""
-        item = await self.get_by_id(user_id, item_id)
+        item = await self.get_by_id(user_id, item_id, for_update=True)
         if not item:
             raise ItemNotFoundError(item_id)
 
