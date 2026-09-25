@@ -8,7 +8,7 @@ from fastapi import APIRouter, Header, HTTPException, Request, status
 from aiogram.types import Update
 
 from backend.api.schemas import WebhookSetupResponse
-from backend.bot.bot import dp, get_bot
+from backend.bot.bot import dp, get_bot, setup_bot_commands_and_menu
 from backend.core.config import settings
 
 logger = logging.getLogger("mating.webhook")
@@ -71,7 +71,11 @@ async def setup_webhook():
             secret_token=settings.WEBHOOK_SECRET,
             drop_pending_updates=True,
         )
-        return WebhookSetupResponse(ok=res, description=f"Webhook configured to {webhook_url}")
+        await setup_bot_commands_and_menu(bot)
+        return WebhookSetupResponse(
+            ok=res,
+            description=f"Webhook configured to {webhook_url} and Telegram bot commands/menu registered",
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
