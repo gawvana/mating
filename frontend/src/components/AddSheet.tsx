@@ -1,16 +1,17 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
-import { translations } from "../i18n";
+import { formatCurrency, translations } from "../i18n";
 import { useAppStore } from "../state/useAppStore";
 import { triggerHaptic } from "../telegram/telegram";
 import { AIParsedItem } from "../types";
+import { calculateTotals, detectCategory, parseShoppingTextDeterministically } from "../utils/localParser";
 
-const UNITS = ["шт", "кг", "л", "уп", "г"];
+const UNITS = ["шт", "кг", "г", "л", "мл", "упак"];
 
 const CATEGORIES = [
-  "Молочные продукты",
   "Овощи и фрукты",
+  "Молочные продукты",
   "Мясо и рыба",
   "Бакалея",
   "Хлеб и выпечка",
@@ -19,17 +20,6 @@ const CATEGORIES = [
   "Хозтовары",
   "Другое",
 ];
-
-const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  "Молочные продукты": ["молок", "сыр", "творог", "масло сливоч", "кефир", "сливк", "йогурт", "ряженк", "сметан", "milk", "cheese", "butter", "sut", "qatiq"],
-  "Овощи и фрукты": ["яблок", "банан", "огур", "помидор", "томат", "картоф", "морков", "лук", "чеснок", "зелен", "капуст", "салат", "апельсин", "лимон", "ягод", "клубник", "виноград", "перец", "груш", "fruit", "apple", "banana", "olma", "bodring", "pomidor"],
-  "Мясо и рыба": ["мяс", "говядин", "свинин", "куриц", "курин", "птиц", "филе", "рыб", "фарш", "колбас", "сосиск", "лосос", "семг", "кревет", "meat", "chicken", "beef", "fish", "go'sht", "baliq"],
-  "Бакалея": ["рис", "гречк", "макарон", "паст", "мук", "сахар", "соль", "хлопь", "круп", "масло раст", "овсянк", "консерв", "горох", "фасол", "чечевиц", "rice", "pasta", "flour", "guruch"],
-  "Хлеб и выпечка": ["хлеб", "батон", "булоч", "лаваш", "круассан", "буханк", "багет", "лепешк", "тост", "bread", "non"],
-  "Напитки": ["сок", "вод", "кола", "чай", "кофе", "пиво", "вино", "лимонад", "минералк", "water", "juice", "tea", "coffee", "suv", "choy"],
-  "Сладости": ["шоколад", "конфет", "печень", "торт", "пирож", "мармелад", "морожен", "вафл", "пряник", "sweets", "candy", "cake", "shirinlik"],
-  "Хозтовары": ["мыл", "шампун", "паста зуб", "порошок", "салфет", "бумага", "губк", "пакет", "средство", "щетк", "soap"],
-};
 
 export const AddSheet: React.FC = () => {
   const queryClient = useQueryClient();
@@ -49,210 +39,122 @@ export const AddSheet: React.FC = () => {
   const dragStartY = useRef<number | null>(null);
   const dragStartTime = useRef<number>(0);
   const currentDragY = useRef<number>(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Quick Add Form state
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [unit, setUnit] = useState("шт");
-  const [category, setCategory] = useState("Другое");
+  const [category, setCategory] = useState("Овощи и фрукты");
   const [price, setPrice] = useState("");
 
   // AI Parser Form state
   const [aiText, setAiText] = useState("");
   const [parsedItems, setParsedItems] = useState<AIParsedItem[]>([]);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
-  const [parseError, setParseError] = useState<string | null>(null);
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
-  // Segmented control: 0 = quick, 1 = ai
+  // Segment index: 0 = quick, 1 = ai
   const segIdx = sheetMode === "quick" ? 0 : 1;
 
-  // Escape key and focus trap
+  // Sync initial text from store
   useEffect(() => {
+    if (sheetInitialText) {
+      setAiText(sheetInitialText);
+      setSheetMode("ai");
+    }
+  }, [sheetInitialText, setSheetMode]);
+
+  // Auto category detection
+  useEffect(() => {
+    if (autoCategory && name.trim().length >= 3) {
+      const detected = detectCategory(name);
+      if (detected && detected !== "Другое") {
+        setCategory(detected);
+      }
+    }
+  }, [name, autoCategory]);
+
+  // Focus & Escape handling
+  useEffect(() => {
+    if (!isSheetOpen) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isSheetOpen) return;
       if (e.key === "Escape") {
         closeSheet();
-        return;
-      }
-      if (e.key === "Tab" && sheetRef.current) {
-        const focusable = Array.from(
-          sheetRef.current.querySelectorAll<HTMLElement>(
-            "button, input, select, textarea, [tabindex]:not([tabindex='-1'])"
-          )
-        ).filter((el) => !(el as HTMLButtonElement | HTMLInputElement).disabled && el.offsetParent !== null);
-        if (!focusable.length) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+
+    const timer = setTimeout(() => {
+      const input = sheetRef.current?.querySelector<HTMLInputElement | HTMLTextAreaElement>("input[type='text'], textarea");
+      input?.focus();
+    }, 60);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      clearTimeout(timer);
+    };
   }, [isSheetOpen, closeSheet]);
 
-  // Manage #app / dock inert when sheet opens
+  // Reset state when opening
   useEffect(() => {
-    const appEl = document.getElementById("app");
-    const dockEl = document.getElementById("dock");
     if (isSheetOpen) {
-      appEl?.setAttribute("inert", "");
-      dockEl?.setAttribute("inert", "");
-      const timer = setTimeout(() => {
-        const inputEl = sheetRef.current?.querySelector<HTMLInputElement>("input[type='text'], textarea");
-        inputEl?.focus();
-      }, 60);
-      return () => clearTimeout(timer);
-    } else {
-      appEl?.removeAttribute("inert");
-      dockEl?.removeAttribute("inert");
-      document.getElementById("fab")?.focus();
+      setName("");
+      setQuantity("1");
+      setUnit("шт");
+      setPrice("");
+      setAiError(null);
     }
   }, [isSheetOpen]);
 
-  // Reset form when sheet opens
-  useEffect(() => {
-    if (isSheetOpen) {
-      setName(sheetInitialText || "");
-      setQuantity("1");
-      setUnit("шт");
-      setCategory("Другое");
-      setPrice("");
-      setAiText(sheetMode === "ai" ? sheetInitialText : "");
-      setParsedItems([]);
-      setSelectedIndices(new Set());
-      setParseError(null);
-
-      // Auto-categorize initial text if provided
-      if (autoCategory && sheetInitialText && sheetInitialText.length >= 3) {
-        const lower = sheetInitialText.toLowerCase();
-        for (const [cat, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
-          if (keywords.some((kw) => lower.includes(kw))) {
-            setCategory(cat);
-            break;
-          }
-        }
-      }
-    }
-  }, [isSheetOpen, sheetInitialText, sheetMode, autoCategory]);
-
-  // ── Drag-to-dismiss ────────────────────────────────────────────────────────
-  const handlePointerDown = (e: React.PointerEvent) => {
-    if (!sheetRef.current) return;
-    dragStartY.current = e.clientY;
-    dragStartTime.current = e.timeStamp;
-    currentDragY.current = 0;
-    sheetRef.current.style.transition = "none";
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  // Stepper handlers
+  const handleQuantityStep = (delta: number) => {
+    if (hapticsEnabled) triggerHaptic("selection");
+    const current = parseFloat(quantity) || 1;
+    const next = Math.max(0.5, current + delta);
+    setQuantity(String(Math.round(next * 10) / 10));
   };
 
-  const handlePointerMove = (e: React.PointerEvent) => {
-    if (dragStartY.current === null || !sheetRef.current) return;
-    const dy = e.clientY - dragStartY.current;
-    if (dy <= 0) return;
-    currentDragY.current = dy;
-    sheetRef.current.style.transform = `translate(-50%, ${dy}px)`;
-  };
+  // Quick add mutation
+  const createItemMutation = useMutation({
+    mutationFn: async () => {
+      const cleanName = name.trim();
+      if (!cleanName) return;
+      const numQty = parseFloat(quantity) || 1;
+      const numPrice = price.trim() ? parseFloat(price.replace(",", ".")) : null;
 
-  const handlePointerUp = (e: React.PointerEvent) => {
-    if (dragStartY.current === null || !sheetRef.current) return;
-    try {
-      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-    } catch {
-      // ignore
-    }
-    const dy = currentDragY.current;
-    const dt = Math.max(1, e.timeStamp - dragStartTime.current);
-    const velocity = dy / dt;
-
-    dragStartY.current = null;
-    sheetRef.current.style.transition = "";
-    sheetRef.current.style.transform = "";
-
-    if (dy > 110 || velocity > 0.6) {
-      closeSheet();
-    }
-  };
-
-  // ── Stepper Handlers ───────────────────────────────────────────────────────
-  const handleMinus = () => {
-    if (hapticsEnabled) triggerHaptic("light");
-    const val = parseFloat(quantity) || 1;
-    const step = val > 1 && Number.isInteger(val) ? 1 : 0.5;
-    const next = Math.max(0.1, Math.round((val - step) * 10) / 10);
-    setQuantity(String(next));
-  };
-
-  const handlePlus = () => {
-    if (hapticsEnabled) triggerHaptic("light");
-    const val = parseFloat(quantity) || 0;
-    const step = Number.isInteger(val) ? 1 : 0.5;
-    const next = Math.round((val + step) * 10) / 10;
-    setQuantity(String(next));
-  };
-
-  // ── Name Change with Auto-Category ─────────────────────────────────────────
-  const handleNameChange = (val: string) => {
-    setName(val);
-    if (autoCategory && val.trim().length >= 3) {
-      const lower = val.toLowerCase();
-      for (const [cat, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
-        if (keywords.some((kw) => lower.includes(kw))) {
-          setCategory(cat);
-          break;
-        }
-      }
-    }
-  };
-
-  // ── Mutations ─────────────────────────────────────────────────────────────
-  const createMutation = useMutation({
-    mutationFn: async () =>
-      api.createItem({
-        name: name.trim(),
-        quantity: parseFloat(quantity) || 1.0,
-        unit: unit.trim() || "шт",
-        category: category || "Другое",
-        price: price.trim() ? parseFloat(price) : null,
-      }),
+      return api.createItem({
+        name: cleanName,
+        quantity: numQty,
+        unit,
+        category,
+        price: numPrice && numPrice > 0 ? numPrice : null,
+      });
+    },
     onSuccess: () => {
       if (hapticsEnabled) triggerHaptic("success");
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["stats"] });
       closeSheet();
     },
-  });
-
-  const parseMutation = useMutation({
-    mutationFn: async (text: string) => api.parseAI(text),
-    onSuccess: (data) => {
-      if (hapticsEnabled) triggerHaptic("medium");
-      setParseError(null);
-      setParsedItems(data.items);
-      setSelectedIndices(new Set(data.items.map((_, idx) => idx)));
-    },
-    onError: () => {
+    onError: (err: any) => {
       if (hapticsEnabled) triggerHaptic("error");
-      setParseError(t.aiError ?? "Ошибка разбора. Попробуйте ещё раз.");
+      alert(err.message || "Ошибка при добавлении товара");
     },
   });
 
-  const batchAddMutation = useMutation({
-    mutationFn: async () => {
-      const selected = parsedItems.filter((_, idx) => selectedIndices.has(idx));
+  // Batch add mutation
+  const batchCreateMutation = useMutation({
+    mutationFn: async (itemsToAdd: AIParsedItem[]) => {
       return api.batchCreateItems(
-        selected.map((it) => ({
+        itemsToAdd.map((it) => ({
           name: it.name,
           quantity: it.quantity,
           unit: it.unit,
           category: it.category,
           price: it.estimated_price,
-          raw_input_text: aiText,
         }))
       );
     },
@@ -262,13 +164,60 @@ export const AddSheet: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ["stats"] });
       closeSheet();
     },
+    onError: (err: any) => {
+      if (hapticsEnabled) triggerHaptic("error");
+      alert(err.message || "Ошибка при добавлении списка");
+    },
   });
 
-  const toggleItemSelection = (index: number) => {
+  // AI Parse Handler
+  const handleParseAI = async () => {
+    if (!aiText.trim()) return;
+    if (hapticsEnabled) triggerHaptic("medium");
+
+    // Abort previous request if in flight
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    setIsAiLoading(true);
+    setAiError(null);
+
+    try {
+      // 1. Try fast local deterministic parser first (0 ms)
+      const localResults = parseShoppingTextDeterministically(aiText);
+      if (localResults && localResults.length > 0) {
+        setParsedItems(localResults);
+        setSelectedIndices(new Set(localResults.map((_, i) => i)));
+        setIsAiLoading(false);
+        return;
+      }
+
+      // 2. Fall back to backend Gemini
+      const resp = await api.parseAI(aiText, controller.signal);
+      if (resp.items && resp.items.length > 0) {
+        setParsedItems(resp.items);
+        setSelectedIndices(new Set(resp.items.map((_, i) => i)));
+      } else {
+        setAiError("Не удалось распознать товары. Попробуйте написать в формате: Помидоры 15, Огурцы 10");
+      }
+    } catch (err: any) {
+      if (err.name !== "AbortError" && err.code !== "ABORTED") {
+        setAiError(err.message || "Ошибка при обращении к AI парсеру");
+      }
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const toggleParsedItem = (index: number) => {
     if (hapticsEnabled) triggerHaptic("selection");
     setSelectedIndices((prev) => {
       const next = new Set(prev);
-      next.has(index) ? next.delete(index) : next.add(index);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
       return next;
     });
   };
@@ -278,35 +227,64 @@ export const AddSheet: React.FC = () => {
     setParsedItems((prev) => prev.filter((_, i) => i !== index));
     setSelectedIndices((prev) => {
       const next = new Set<number>();
-      prev.forEach((i) => {
-        if (i < index) next.add(i);
-        else if (i > index) next.add(i - 1);
-      });
+      for (const idx of prev) {
+        if (idx < index) next.add(idx);
+        else if (idx > index) next.add(idx - 1);
+      }
       return next;
     });
   };
 
-  const handleQuickSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-    createMutation.mutate();
+  // Deterministic totals for preview
+  const selectedItems = parsedItems.filter((_, i) => selectedIndices.has(i));
+  const previewTotals = calculateTotals(selectedItems);
+
+  // Line total for quick add
+  const quickQty = parseFloat(quantity) || 1;
+  const quickPrice = price ? parseFloat(price.replace(",", ".")) : null;
+  const quickLineTotal = quickPrice ? quickQty * quickPrice : null;
+
+  // Pointer drag to dismiss header
+  const handlePointerDown = (e: React.PointerEvent) => {
+    dragStartY.current = e.clientY;
+    dragStartTime.current = Date.now();
+    currentDragY.current = 0;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
   };
 
-  const handleParseSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!aiText.trim()) return;
-    setParseError(null);
-    parseMutation.mutate(aiText);
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (dragStartY.current === null || !sheetRef.current) return;
+    const dy = e.clientY - dragStartY.current;
+    currentDragY.current = dy;
+    if (dy > 0) {
+      sheetRef.current.style.transform = `translate(-50%, ${dy}px)`;
+    }
+  };
+
+  const handlePointerUp = () => {
+    if (dragStartY.current === null || !sheetRef.current) return;
+    const dy = currentDragY.current;
+    const elapsed = Date.now() - dragStartTime.current;
+    const velocity = dy / Math.max(1, elapsed);
+
+    sheetRef.current.style.transform = "";
+    dragStartY.current = null;
+
+    if (dy > 100 || velocity > 0.6) {
+      closeSheet();
+    }
   };
 
   return (
     <>
+      {/* Scrim */}
       <div
         className={`scrim ${isSheetOpen ? "open" : ""}`}
         onClick={closeSheet}
         aria-hidden="true"
       />
 
+      {/* Sheet Container */}
       <div
         ref={sheetRef}
         className={`sheet glass ${isSheetOpen ? "open" : ""}`}
@@ -314,24 +292,24 @@ export const AddSheet: React.FC = () => {
         aria-modal="true"
         aria-label={t.addTitle}
       >
-        {/* Drag handle */}
+        {/* Drag Handle */}
         <div
-          className="sheet-handle-zone"
+          className="sheet-hd"
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
         >
-          <div className="sheet-handle" />
+          <div className="sheet-grab">
+            <i />
+          </div>
         </div>
 
-        <h3 className="sheet-title">{t.addTitle}</h3>
+        {/* Title */}
+        <h3>{t.addTitle}</h3>
 
-        {/* Mode switch */}
-        <div
-          className="seg"
-          style={{ "--seg-cols": 2, "--seg-idx": segIdx } as React.CSSProperties}
-        >
+        {/* Mode Segmented Control (Быстрый ввод | AI-текст) */}
+        <div className="seg" style={{ "--seg-cols": 2, "--seg-idx": segIdx } as React.CSSProperties}>
           <i aria-hidden="true" />
           <button
             type="button"
@@ -355,50 +333,35 @@ export const AddSheet: React.FC = () => {
           </button>
         </div>
 
-        {sheetMode === "quick" ? (
-          <form onSubmit={handleQuickSubmit}>
+        {/* ── QUICK ADD TAB ── */}
+        {sheetMode === "quick" && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              createItemMutation.mutate();
+            }}
+          >
             {/* Product Name Input */}
-            <div style={{ marginBottom: 12, position: "relative" }}>
+            <div className="field-group">
+              <label className="field-label">{t.itemName}</label>
               <input
-                className="input-field"
                 type="text"
-                placeholder={t.itemNamePlaceholder || "Название товара"}
+                className="text-input"
+                placeholder="Например: Помидоры"
                 value={name}
-                onChange={(e) => handleNameChange(e.target.value)}
+                onChange={(e) => setName(e.target.value)}
                 autoFocus
-                required
-                style={{ paddingRight: name ? 36 : 14 }}
               />
-              {name && (
-                <button
-                  type="button"
-                  onClick={() => setName("")}
-                  style={{
-                    position: "absolute",
-                    right: 10,
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    background: "none",
-                    border: "none",
-                    color: "var(--muted)",
-                    fontSize: 16,
-                    padding: 4,
-                    cursor: "pointer",
-                  }}
-                  aria-label="Очистить"
-                >
-                  ✕
-                </button>
-              )}
             </div>
 
-            {/* Stepper + Canonical Unit Segmented Control */}
-            <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12 }}>
-              <div className="stepper" style={{ flexShrink: 0 }}>
+            {/* Quantity Stepper & Unit Selector */}
+            <div className="field-group">
+              <label className="field-label">{t.quantity}</label>
+              <div className="stepper-row">
                 <button
                   type="button"
                   className="stepper-btn"
-                  onClick={handleMinus}
+                  onClick={() => handleQuantityStep(-1)}
                   aria-label="Уменьшить"
                 >
                   −
@@ -406,28 +369,27 @@ export const AddSheet: React.FC = () => {
                 <input
                   type="number"
                   step="any"
-                  min="0.1"
-                  className="stepper-input"
+                  className="stepper-val"
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value)}
-                  aria-label={t.quantity}
                 />
                 <button
                   type="button"
                   className="stepper-btn"
-                  onClick={handlePlus}
+                  onClick={() => handleQuantityStep(1)}
                   aria-label="Увеличить"
                 >
                   +
                 </button>
               </div>
 
-              <div className="unit-seg" style={{ flex: 1 }}>
+              {/* Units */}
+              <div className="unit-chip-row">
                 {UNITS.map((u) => (
                   <button
                     key={u}
                     type="button"
-                    className={`unit-btn ${unit === u ? "on" : ""}`}
+                    className={`unit-chip ${unit === u ? "on" : ""}`}
                     onClick={() => {
                       if (hapticsEnabled) triggerHaptic("selection");
                       setUnit(u);
@@ -439,172 +401,151 @@ export const AddSheet: React.FC = () => {
               </div>
             </div>
 
-            {/* Category Chips Row */}
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                {t.category}
+            {/* Optional Price */}
+            <div className="field-group">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <label className="field-label">{t.price}</label>
+                {quickLineTotal !== null && (
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "var(--primary)" }}>
+                    Итого: {formatCurrency(quickLineTotal, "UZS", language)}
+                  </span>
+                )}
               </div>
-              <div className="chip-row">
-                {CATEGORIES.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    className={`chip ${category === c ? "on" : ""}`}
-                    onClick={() => {
-                      if (hapticsEnabled) triggerHaptic("selection");
-                      setCategory(c);
-                    }}
-                  >
-                    {c}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Price (optional) */}
-            <div style={{ marginBottom: 16 }}>
               <input
-                className="input-field"
                 type="number"
                 step="any"
-                min="0"
-                placeholder={t.pricePlaceholder || "Цена (необязательно)"}
+                className="text-input"
+                placeholder="Опционально, например 15000"
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
               />
             </div>
 
-            {/* Primary Action Button */}
+            {/* Category Selector */}
+            <div className="field-group">
+              <label className="field-label">{t.category}</label>
+              <div className="cat-filter-row">
+                {CATEGORIES.map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    className={`cat-pill ${category === cat ? "on" : ""}`}
+                    onClick={() => {
+                      if (hapticsEnabled) triggerHaptic("selection");
+                      setCategory(cat);
+                    }}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Add Button */}
             <button
               type="submit"
-              className="btn"
-              disabled={createMutation.isPending || !name.trim()}
+              className="btn press"
+              disabled={!name.trim() || createItemMutation.isPending}
+              style={{ marginTop: 16 }}
             >
-              {createMutation.isPending ? t.syncing : t.addBtn}
+              {createItemMutation.isPending ? "Добавление..." : t.addTitle}
             </button>
           </form>
-        ) : (
+        )}
+
+        {/* ── AI ADD TAB ── */}
+        {sheetMode === "ai" && (
           <div>
-            <form onSubmit={handleParseSubmit} style={{ marginBottom: 16 }}>
+            <div className="field-group">
+              <label className="field-label">Напишите список текстом (RU, UZ, EN)</label>
               <textarea
-                className="input-field"
-                rows={3}
-                placeholder={t.aiPlaceholder}
+                className="text-area"
+                rows={4}
+                placeholder="Помидоры 2 кг 15000&#10;Огурцы 1 кг 12000&#10;Хлеб 2 шт за 10000"
                 value={aiText}
                 onChange={(e) => setAiText(e.target.value)}
-                disabled={parseMutation.isPending}
-                required
               />
+            </div>
 
-              <div style={{ marginTop: 10 }}>
-                <button
-                  type="submit"
-                  className="btn"
-                  disabled={parseMutation.isPending || !aiText.trim()}
-                >
-                  {parseMutation.isPending ? t.parsing : t.parseBtn}
-                </button>
-              </div>
-            </form>
+            <button
+              type="button"
+              className="btn tn press"
+              onClick={handleParseAI}
+              disabled={!aiText.trim() || isAiLoading}
+            >
+              {isAiLoading ? "Распознавание..." : "Разобрать список"}
+            </button>
 
-            {parseMutation.isPending && (
-              <div style={{ display: "flex", justifyContent: "center", padding: "20px 0" }}>
-                <div className="spinner" />
-              </div>
-            )}
-
-            {/* Error state with retry */}
-            {parseError && !parseMutation.isPending && (
-              <div
-                style={{
-                  background: "var(--err-c)",
-                  color: "var(--on-err-c)",
-                  borderRadius: "var(--r2)",
-                  padding: "12px 16px",
-                  marginBottom: 12,
-                  fontSize: 14,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
-                <span>{parseError}</span>
-                <button
-                  type="button"
-                  style={{
-                    fontWeight: 700,
-                    textDecoration: "underline",
-                    flexShrink: 0,
-                    background: "none",
-                    border: "none",
-                    color: "inherit",
-                    cursor: "pointer",
-                  }}
-                  onClick={() => {
-                    setParseError(null);
-                    parseMutation.mutate(aiText);
-                  }}
-                >
-                  {t.retry ?? "Повторить"}
-                </button>
+            {aiError && (
+              <div style={{ color: "var(--err)", fontSize: 13, marginTop: 8, textAlign: "center" }}>
+                {aiError}
               </div>
             )}
 
+            {/* Parsed Items Preview List */}
             {parsedItems.length > 0 && (
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8, color: "var(--on)" }}>
-                  {t.previewTitle.replace("{count}", parsedItems.length.toString())}
+              <div style={{ marginTop: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase" }}>
+                    Найдено ({parsedItems.length})
+                  </span>
+                  <button
+                    type="button"
+                    style={{ fontSize: 12, color: "var(--primary)", fontWeight: 700 }}
+                    onClick={() => {
+                      if (selectedIndices.size === parsedItems.length) {
+                        setSelectedIndices(new Set());
+                      } else {
+                        setSelectedIndices(new Set(parsedItems.map((_, i) => i)));
+                      }
+                    }}
+                  >
+                    {selectedIndices.size === parsedItems.length ? "Снять всё" : "Выбрать всё"}
+                  </button>
                 </div>
 
-                <div style={{ maxHeight: 220, overflowY: "auto", marginBottom: 14 }}>
+                <div className="ai-preview-container">
                   {parsedItems.map((item, idx) => {
                     const isSelected = selectedIndices.has(idx);
                     return (
                       <div
                         key={idx}
-                        className="ai-preview-item press"
-                        style={{ display: "flex", alignItems: "center", gap: 10 }}
+                        className={`ai-preview-card ${isSelected ? "selected" : ""}`}
+                        onClick={() => toggleParsedItem(idx)}
                       >
-                        <div
-                          className={`ai-preview-check ${isSelected ? "on" : ""}`}
-                          onClick={() => toggleItemSelection(idx)}
-                          role="checkbox"
-                          aria-checked={isSelected}
-                          style={{ cursor: "pointer" }}
-                        >
+                        <div className={`item-check ${isSelected ? "checked" : ""}`}>
                           {isSelected && (
-                            <svg viewBox="0 0 24 24" style={{ width: 14, height: 14 }}>
-                              <polyline points="20 6 9 17 4 12" />
+                            <svg viewBox="0 0 24 24">
+                              <path d="M20 6L9 17l-5-5" />
                             </svg>
                           )}
                         </div>
 
-                        <div
-                          style={{ flex: 1, minWidth: 0, cursor: "pointer" }}
-                          onClick={() => toggleItemSelection(idx)}
-                        >
-                          <div style={{ fontWeight: 600, fontSize: 14, color: "var(--on)" }}>{item.name}</div>
-                          <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                            {item.quantity} {item.unit} • {item.category}
-                            {item.estimated_price ? ` • ~${item.estimated_price.toLocaleString()}` : ""}
+                        <div className="item-body">
+                          <div className="item-name">{item.name}</div>
+                          <div className="item-meta">
+                            <span>
+                              {item.quantity} {item.unit}
+                            </span>
+                            <span className="item-tag">{item.category}</span>
                           </div>
                         </div>
 
+                        {item.estimated_price !== null && (
+                          <div className="item-price-col">
+                            <span className="item-price-val">
+                              {formatCurrency(item.quantity * item.estimated_price, "UZS", language)}
+                            </span>
+                          </div>
+                        )}
+
                         <button
                           type="button"
+                          className="item-del-btn"
                           onClick={(e) => {
                             e.stopPropagation();
                             removeParsedItem(idx);
                           }}
-                          style={{
-                            background: "none",
-                            border: "none",
-                            color: "var(--muted)",
-                            fontSize: 16,
-                            padding: "4px 8px",
-                            cursor: "pointer",
-                          }}
-                          aria-label="Удалить позицию"
                         >
                           ✕
                         </button>
@@ -613,16 +554,27 @@ export const AddSheet: React.FC = () => {
                   })}
                 </div>
 
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => batchAddMutation.mutate()}
-                  disabled={selectedIndices.size === 0 || batchAddMutation.isPending}
-                >
-                  {batchAddMutation.isPending
-                    ? t.syncing
-                    : t.addSelected.replace("{count}", selectedIndices.size.toString())}
-                </button>
+                {/* Deterministic Grand Total Summary */}
+                <div className="ai-preview-total">
+                  <span>Выбрано: {previewTotals.count} поз.</span>
+                  {previewTotals.hasPrices && (
+                    <span>Итого: {formatCurrency(previewTotals.grandTotal, "UZS", language)}</span>
+                  )}
+                </div>
+
+                {/* Batch Add Actions */}
+                <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+                  <button
+                    type="button"
+                    className="btn press"
+                    disabled={selectedItems.length === 0 || batchCreateMutation.isPending}
+                    onClick={() => batchCreateMutation.mutate(selectedItems)}
+                  >
+                    {batchCreateMutation.isPending
+                      ? "Добавление..."
+                      : `Добавить выбранное (${selectedItems.length})`}
+                  </button>
+                </div>
               </div>
             )}
           </div>

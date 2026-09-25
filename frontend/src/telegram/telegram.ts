@@ -20,42 +20,60 @@ declare global {
   }
 }
 
+export function isTelegramWebApp(): boolean {
+  return typeof window !== "undefined" && Boolean(window.Telegram?.WebApp?.initData && window.Telegram.WebApp.initData.length > 0);
+}
+
 export function getTelegramInitData(): string {
   if (typeof window !== "undefined" && window.Telegram?.WebApp?.initData) {
     return window.Telegram.WebApp.initData;
   }
-  // Browser fallback for standalone development/testing:
-  const demoPayload = JSON.stringify({
-    id: 999999,
-    username: "demo_user",
-    first_name: "Demo User",
-    language_code: "ru",
-  });
-  return `tma-test ${demoPayload}`;
+  return "";
 }
 
 export function initTelegramApp(): void {
   if (typeof window !== "undefined" && window.Telegram?.WebApp) {
     const webapp = window.Telegram.WebApp;
-    webapp.ready();
-    webapp.expand();
+    try {
+      webapp.ready();
+      webapp.expand();
+    } catch {
+      // Ignore if not in full TMA environment
+    }
   }
 }
 
 export function triggerHaptic(type: "light" | "medium" | "heavy" | "selection" | "success" | "error"): void {
-  if (typeof window === "undefined" || !window.Telegram?.WebApp?.HapticFeedback) {
-    return;
+  if (typeof window === "undefined") return;
+
+  // 1. Telegram WebApp Haptic
+  if (window.Telegram?.WebApp?.HapticFeedback) {
+    try {
+      const hf = window.Telegram.WebApp.HapticFeedback;
+      if (type === "selection") {
+        hf.selectionChanged();
+      } else if (type === "success" || type === "error") {
+        hf.notificationOccurred(type === "success" ? "success" : "error");
+      } else {
+        hf.impactOccurred(type);
+      }
+      return;
+    } catch {
+      // fallback to navigator.vibrate
+    }
   }
-  const hf = window.Telegram.WebApp.HapticFeedback;
+
+  // 2. Browser standard vibration fallback
   try {
-    if (type === "selection") {
-      hf.selectionChanged();
-    } else if (type === "success" || type === "error") {
-      hf.notificationOccurred(type === "success" ? "success" : "error");
-    } else {
-      hf.impactOccurred(type);
+    if (navigator.vibrate) {
+      if (type === "selection") navigator.vibrate(6);
+      else if (type === "light") navigator.vibrate(10);
+      else if (type === "medium") navigator.vibrate(20);
+      else if (type === "heavy") navigator.vibrate(35);
+      else if (type === "error") navigator.vibrate([20, 40, 20]);
+      else if (type === "success") navigator.vibrate([15, 30, 25]);
     }
   } catch {
-    // Graceful fallback if haptics fail
+    // Silently ignore if not supported
   }
 }

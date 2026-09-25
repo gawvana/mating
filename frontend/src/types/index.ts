@@ -1,5 +1,6 @@
 export interface User {
   id: string;
+  telegram_id?: number;
   username: string | null;
   first_name: string | null;
   language_code: string;
@@ -7,7 +8,7 @@ export interface User {
   city: string | null;
   monthly_budget: number | null;
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
 }
 
 export interface ShoppingItem {
@@ -20,12 +21,13 @@ export interface ShoppingItem {
   price: number | null;
   currency_code: string;
   is_purchased: boolean;
-  raw_input_text: string | null;
+  raw_input_text?: string | null;
   created_at: string;
-  purchased_at: string | null;
+  purchased_at?: string | null;
   version: number;
-  client_mutation_id: string | null;
-  deleted_at: string | null;
+  client_mutation_id?: string | null;
+  deleted_at?: string | null;
+  updated_at?: string;
 }
 
 export interface CategorySpending {

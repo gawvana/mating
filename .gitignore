@@ -50,3 +50,8 @@ yarn-error.log*
 .vscode/
 *.swp
 *.swo
+
+# Screenshots & Local Verification Artefacts
+screenshots/
+screenshot*.png
+scripts/page_dump.html

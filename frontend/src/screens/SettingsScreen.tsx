@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import React from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
-import { Language, translations } from "../i18n";
-import { ThemeMode, useAppStore } from "../state/useAppStore";
+import { translations } from "../i18n";
+import { useAppStore } from "../state/useAppStore";
 import { triggerHaptic } from "../telegram/telegram";
 
 export const SettingsScreen: React.FC = () => {
@@ -10,6 +10,8 @@ export const SettingsScreen: React.FC = () => {
   const {
     language,
     setLanguage,
+    currency,
+    setCurrency,
     theme,
     setTheme,
     compactMode,
@@ -24,496 +26,293 @@ export const SettingsScreen: React.FC = () => {
     setConfirmDelete,
     autoCategory,
     setAutoCategory,
+    isOffline,
   } = useAppStore();
+
   const t = translations[language];
 
-  // Fetch current user settings
-  const { data: profile } = useQuery({
-    queryKey: ["profile"],
-    queryFn: () => api.getProfile(),
-  });
-
-  // Fetch items for profile card counters
-  const { data: items = [] } = useQuery({
-    queryKey: ["items"],
-    queryFn: () => api.getItems(),
-  });
-
-  const activeCount = items.filter((i) => !i.is_purchased).length;
-  const boughtCount = items.filter((i) => i.is_purchased).length;
-
-  const [currency, setCurrency] = useState("UZS");
-  const [city, setCity] = useState("");
-  const [budget, setBudget] = useState("");
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [cacheToast, setCacheToast] = useState(false);
-
-  useEffect(() => {
-    if (profile) {
-      if (profile.language_code && profile.language_code !== language) {
-        setLanguage(profile.language_code as Language);
-      }
-      setCurrency(profile.currency_code || "UZS");
-      setCity(profile.city || "");
-      setBudget(profile.monthly_budget ? profile.monthly_budget.toString() : "");
-    }
-  }, [profile]);
-
-  // Update settings mutation
-  const updateSettingsMutation = useMutation({
-    mutationFn: async (updatedFields: {
-      language_code?: string;
-      currency_code?: string;
-      city?: string | null;
-      monthly_budget?: number | null;
-    }) => {
-      return api.updateSettings(updatedFields);
-    },
-    onSuccess: (data) => {
-      if (hapticsEnabled) triggerHaptic("success");
-      queryClient.setQueryData(["profile"], data);
-      queryClient.invalidateQueries({ queryKey: ["stats"] });
+  const clearPurchasedMutation = useMutation({
+    mutationFn: () => api.clearPurchased(),
+    onSuccess: () => {
+      if (hapticsEnabled) triggerHaptic("heavy");
       queryClient.invalidateQueries({ queryKey: ["items"] });
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2500);
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+      alert("Купленные товары успешно очищены");
     },
   });
 
-  const handleLanguageChange = (lang: Language) => {
-    if (hapticsEnabled) triggerHaptic("selection");
-    setLanguage(lang);
-    updateSettingsMutation.mutate({ language_code: lang });
-  };
-
-  const handleCurrencyChange = (newCurrency: string) => {
-    if (hapticsEnabled) triggerHaptic("selection");
-    setCurrency(newCurrency);
-    updateSettingsMutation.mutate({ currency_code: newCurrency });
-  };
-
-  const handleThemeChange = (newTheme: ThemeMode) => {
+  const handleThemeChange = (newTheme: "auto" | "light" | "dark") => {
     if (hapticsEnabled) triggerHaptic("selection");
     setTheme(newTheme);
+    if (newTheme === "auto") {
+      document.documentElement.removeAttribute("data-theme");
+      if (window.Telegram?.WebApp?.colorScheme) {
+        document.documentElement.setAttribute("data-theme", window.Telegram.WebApp.colorScheme);
+      }
+    } else {
+      document.documentElement.setAttribute("data-theme", newTheme);
+    }
   };
 
-  const handleSavePreferences = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateSettingsMutation.mutate({
-      city: city.trim() || null,
-      monthly_budget: budget ? parseFloat(budget) : null,
-    });
+  const handleLanguageChange = (lang: "ru" | "uz" | "en") => {
+    if (hapticsEnabled) triggerHaptic("selection");
+    setLanguage(lang);
   };
 
-  const handleClearCache = () => {
-    if (hapticsEnabled) triggerHaptic("medium");
-    queryClient.clear();
-    queryClient.invalidateQueries({ queryKey: ["items"] });
-    queryClient.invalidateQueries({ queryKey: ["stats"] });
-    queryClient.invalidateQueries({ queryKey: ["profile"] });
-    setCacheToast(true);
-    setTimeout(() => setCacheToast(false), 2500);
+  const handleCurrencyChange = (curr: "UZS" | "RUB" | "USD") => {
+    if (hapticsEnabled) triggerHaptic("selection");
+    setCurrency(curr);
   };
-
-  // Telegram User Information
-  const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
-  const displayName = tgUser?.first_name
-    ? `${tgUser.first_name} ${tgUser.last_name || ""}`.trim()
-    : profile?.first_name || "Пользователь Mating";
-  const username = tgUser?.username || profile?.username ? `@${tgUser?.username || profile?.username}` : null;
-  const userInitial = displayName.charAt(0).toUpperCase() || "M";
-  const telegramId = tgUser?.id ? String(tgUser.id) : (profile?.id ? profile.id.slice(0, 8) : "78492019");
 
   return (
-    <div className="page-content" style={{ paddingTop: 70, paddingBottom: 100 }}>
-      {/* Toast notifications */}
-      {saveSuccess && (
-        <div
-          style={{
-            background: "var(--ok-c)",
-            color: "var(--on-ok-c)",
-            padding: "10px 16px",
-            borderRadius: "var(--r2)",
-            marginBottom: 14,
-            fontWeight: 600,
-            fontSize: 14,
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          ✓ {t.saved}
-        </div>
-      )}
-
-      {cacheToast && (
-        <div
-          style={{
-            background: "var(--p)",
-            color: "var(--on-p)",
-            padding: "10px 16px",
-            borderRadius: "var(--r2)",
-            marginBottom: 14,
-            fontWeight: 600,
-            fontSize: 14,
-          }}
-        >
-          ✓ {t.cacheCleared || "Локальный кэш очищен"}
-        </div>
-      )}
-
-      {/* ── PROFILE CARD (Screenshot 2 Architecture) ── */}
-      <div className="profile-card">
-        <div className="profile-user-row">
-          <div className="profile-avatar">{userInitial}</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="profile-meta-name">{displayName}</div>
-            <div className="profile-meta-sub">
-              {username ? username : `ID: ${telegramId}`}
-            </div>
-          </div>
-          <div
-            style={{
-              padding: "4px 8px",
-              borderRadius: "12px",
-              background: "rgba(52, 199, 89, 0.12)",
-              color: "#34c759",
-              fontSize: "11px",
-              fontWeight: 700,
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#34c759" }} />
-            Online
-          </div>
-        </div>
-
-        <div className="profile-stats-grid">
-          <div className="profile-stat-box">
-            <div className="profile-stat-num">{activeCount}</div>
-            <div className="profile-stat-sub">{t.activeLabel || "активных"}</div>
-          </div>
-          <div className="profile-stat-box">
-            <div className="profile-stat-num" style={{ color: "#34c759" }}>
-              {boughtCount}
-            </div>
-            <div className="profile-stat-sub">{t.itemsPurchasedLabel || "купленных"}</div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── 1. ОБЩИЕ ── */}
-      <div className="settings-section-hdr">{t.secGeneral || "ОБЩИЕ"}</div>
+    <div style={{ paddingTop: 8 }}>
+      {/* ── ОБЩИЕ ── */}
+      <div className="settings-group-title">{t.secGeneral}</div>
       <div className="settings-group">
-        {/* Language */}
+        {/* Язык */}
         <div className="settings-row">
-          <div className="settings-row-left">
+          <div>
             <div className="settings-row-label">{t.language}</div>
+            <div className="settings-row-desc">Язык интерфейса приложения</div>
           </div>
-          <div style={{ display: "flex", gap: 4 }}>
-            {(["ru", "uz", "en"] as Language[]).map((l) => (
-              <button
-                key={l}
-                type="button"
-                className={`unit-btn ${language === l ? "on" : ""}`}
-                style={{ minWidth: 42, padding: "5px 10px" }}
-                onClick={() => handleLanguageChange(l)}
-              >
-                {l.toUpperCase()}
-              </button>
-            ))}
+          <div className="seg" style={{ width: 140, margin: 0, "--seg-cols": 3, "--seg-idx": language === "ru" ? 0 : language === "uz" ? 1 : 2 } as React.CSSProperties}>
+            <i aria-hidden="true" />
+            <button className={language === "ru" ? "on" : ""} onClick={() => handleLanguageChange("ru")}>
+              RU
+            </button>
+            <button className={language === "uz" ? "on" : ""} onClick={() => handleLanguageChange("uz")}>
+              UZ
+            </button>
+            <button className={language === "en" ? "on" : ""} onClick={() => handleLanguageChange("en")}>
+              EN
+            </button>
           </div>
         </div>
 
-        {/* Currency */}
+        {/* Валюта */}
         <div className="settings-row">
-          <div className="settings-row-left">
+          <div>
             <div className="settings-row-label">{t.currency}</div>
+            <div className="settings-row-desc">Основная валюта для подсчётов</div>
           </div>
-          <select
-            className="input-field"
-            style={{ width: 100, height: 36, padding: "4px 8px", fontSize: 14 }}
-            value={currency}
-            onChange={(e) => handleCurrencyChange(e.target.value)}
-          >
-            <option value="UZS">UZS (сум)</option>
-            <option value="USD">USD ($)</option>
-            <option value="RUB">RUB (₽)</option>
-            <option value="EUR">EUR (€)</option>
-          </select>
-        </div>
-
-        {/* City & Budget Form */}
-        <form onSubmit={handleSavePreferences}>
-          <div className="settings-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 6 }}>
-            <div className="settings-row-label">{t.city}</div>
-            <input
-              className="input-field"
-              type="text"
-              placeholder={t.cityPlaceholder || "Например: Ташкент"}
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              style={{ height: 38 }}
-            />
-          </div>
-
-          <div className="settings-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 6 }}>
-            <div className="settings-row-label">
-              {t.monthlyBudget} <small style={{ color: "var(--muted)" }}>({currency})</small>
-            </div>
-            <input
-              className="input-field"
-              type="number"
-              min="0"
-              step="any"
-              placeholder={t.budgetPlaceholder || "Например: 1500000"}
-              value={budget}
-              onChange={(e) => setBudget(e.target.value)}
-              style={{ height: 38 }}
-            />
-          </div>
-
-          <div style={{ padding: "10px 16px" }}>
-            <button
-              type="submit"
-              className="btn btn-p press"
-              style={{ padding: "10px", fontSize: 14 }}
-              disabled={updateSettingsMutation.isPending}
-            >
-              {updateSettingsMutation.isPending ? t.syncing : t.savePreferences || "Сохранить"}
+          <div className="seg" style={{ width: 150, margin: 0, "--seg-cols": 3, "--seg-idx": currency === "UZS" ? 0 : currency === "RUB" ? 1 : 2 } as React.CSSProperties}>
+            <i aria-hidden="true" />
+            <button className={currency === "UZS" ? "on" : ""} onClick={() => handleCurrencyChange("UZS")}>
+              UZS
+            </button>
+            <button className={currency === "RUB" ? "on" : ""} onClick={() => handleCurrencyChange("RUB")}>
+              RUB
+            </button>
+            <button className={currency === "USD" ? "on" : ""} onClick={() => handleCurrencyChange("USD")}>
+              USD
             </button>
           </div>
-        </form>
-      </div>
-
-      {/* ── 2. ВНЕШНИЙ ВИД ── */}
-      <div className="settings-section-hdr">{t.secAppearance || "ВНЕШНИЙ ВИД"}</div>
-      <div className="settings-group">
-        {/* Theme mode */}
-        <div className="settings-row">
-          <div className="settings-row-left">
-            <div className="settings-row-label">{t.theme}</div>
-          </div>
-          <div style={{ display: "flex", gap: 4 }}>
-            <button
-              type="button"
-              className={`unit-btn ${theme === "auto" ? "on" : ""}`}
-              style={{ padding: "5px 10px" }}
-              onClick={() => handleThemeChange("auto")}
-            >
-              {t.themeAuto}
-            </button>
-            <button
-              type="button"
-              className={`unit-btn ${theme === "light" ? "on" : ""}`}
-              style={{ padding: "5px 10px" }}
-              onClick={() => handleThemeChange("light")}
-            >
-              {t.themeLight}
-            </button>
-            <button
-              type="button"
-              className={`unit-btn ${theme === "dark" ? "on" : ""}`}
-              style={{ padding: "5px 10px" }}
-              onClick={() => handleThemeChange("dark")}
-            >
-              {t.themeDark}
-            </button>
-          </div>
-        </div>
-
-        {/* Compact Mode Toggle */}
-        <div className="settings-row">
-          <div className="settings-row-left">
-            <div className="settings-row-label">{t.compactMode || "Компактный режим"}</div>
-            <div className="settings-row-desc">{t.compactModeDesc || "Уменьшенные карточки и отступы"}</div>
-          </div>
-          <label className="switch">
-            <input
-              type="checkbox"
-              checked={compactMode}
-              onChange={(e) => {
-                if (hapticsEnabled) triggerHaptic("light");
-                setCompactMode(e.target.checked);
-              }}
-            />
-            <span className="switch-slider" />
-          </label>
-        </div>
-
-        {/* Reduced Motion Toggle */}
-        <div className="settings-row">
-          <div className="settings-row-left">
-            <div className="settings-row-label">{t.reducedMotion || "Уменьшение движения"}</div>
-            <div className="settings-row-desc">{t.reducedMotionDesc || "Отключение пружинных анимаций"}</div>
-          </div>
-          <label className="switch">
-            <input
-              type="checkbox"
-              checked={reducedMotion}
-              onChange={(e) => {
-                if (hapticsEnabled) triggerHaptic("light");
-                setReducedMotion(e.target.checked);
-              }}
-            />
-            <span className="switch-slider" />
-          </label>
         </div>
       </div>
 
-      {/* ── 3. СПИСОК ПОКУПОК ── */}
-      <div className="settings-section-hdr">{t.secList || "СПИСОК ПОКУПОК"}</div>
+      {/* ── СПИСОК ПОКУПОК ── */}
+      <div className="settings-group-title">{t.secList}</div>
       <div className="settings-group">
-        {/* Show Purchased Toggle */}
+        {/* Показывать купленные */}
         <div className="settings-row">
-          <div className="settings-row-left">
-            <div className="settings-row-label">{t.showPurchased || "Показывать купленное"}</div>
+          <div>
+            <div className="settings-row-label">{t.showPurchased}</div>
+            <div className="settings-row-desc">Отображать блок купленных позиций внизу</div>
           </div>
-          <label className="switch">
-            <input
-              type="checkbox"
-              checked={showPurchased}
-              onChange={(e) => {
-                if (hapticsEnabled) triggerHaptic("light");
-                setShowPurchased(e.target.checked);
-              }}
-            />
-            <span className="switch-slider" />
-          </label>
-        </div>
-
-        {/* Confirm Delete Toggle */}
-        <div className="settings-row">
-          <div className="settings-row-left">
-            <div className="settings-row-label">{t.confirmDelete || "Подтверждать удаление"}</div>
-          </div>
-          <label className="switch">
-            <input
-              type="checkbox"
-              checked={confirmDelete}
-              onChange={(e) => {
-                if (hapticsEnabled) triggerHaptic("light");
-                setConfirmDelete(e.target.checked);
-              }}
-            />
-            <span className="switch-slider" />
-          </label>
-        </div>
-
-        {/* Haptics Toggle */}
-        <div className="settings-row">
-          <div className="settings-row-left">
-            <div className="settings-row-label">{t.haptics || "Вибрация"}</div>
-            <div className="settings-row-desc">{t.hapticsDesc || "Тактильный отклик Telegram"}</div>
-          </div>
-          <label className="switch">
-            <input
-              type="checkbox"
-              checked={hapticsEnabled}
-              onChange={(e) => {
-                if (!hapticsEnabled) triggerHaptic("light");
-                setHapticsEnabled(e.target.checked);
-              }}
-            />
-            <span className="switch-slider" />
-          </label>
-        </div>
-      </div>
-
-      {/* ── 4. AI И ПАРСИНГ ── */}
-      <div className="settings-section-hdr">{t.secAI || "AI И ПАРСИНГ"}</div>
-      <div className="settings-group">
-        {/* AI Status */}
-        <div className="settings-row">
-          <div className="settings-row-left">
-            <div className="settings-row-label">{t.aiStatus || "AI модель"}</div>
-            <div className="settings-row-desc">{t.aiProviderName || "Google Gemini 2.5 Flash"}</div>
-          </div>
-          <div
-            style={{
-              padding: "4px 10px",
-              borderRadius: "12px",
-              background: "rgba(52, 199, 89, 0.12)",
-              color: "#34c759",
-              fontSize: "12px",
-              fontWeight: 700,
+          <button
+            type="button"
+            className="sw"
+            role="switch"
+            aria-checked={showPurchased}
+            onClick={() => {
+              if (hapticsEnabled) triggerHaptic("selection");
+              setShowPurchased(!showPurchased);
             }}
           >
-            ✓ Активно
-          </div>
+            <i />
+          </button>
         </div>
 
-        {/* Auto Category Toggle */}
+        {/* Компактный режим */}
         <div className="settings-row">
-          <div className="settings-row-left">
-            <div className="settings-row-label">{t.autoCategory || "Автоопределение категории"}</div>
-            <div className="settings-row-desc">Автоматический выбор категории при вводе</div>
+          <div>
+            <div className="settings-row-label">{t.compactMode}</div>
+            <div className="settings-row-desc">Уменьшенные отступы для большего числа товаров</div>
           </div>
-          <label className="switch">
-            <input
-              type="checkbox"
-              checked={autoCategory}
-              onChange={(e) => {
-                if (hapticsEnabled) triggerHaptic("light");
-                setAutoCategory(e.target.checked);
-              }}
-            />
-            <span className="switch-slider" />
-          </label>
+          <button
+            type="button"
+            className="sw"
+            role="switch"
+            aria-checked={compactMode}
+            onClick={() => {
+              if (hapticsEnabled) triggerHaptic("selection");
+              setCompactMode(!compactMode);
+              document.documentElement.classList.toggle("compact-mode", !compactMode);
+            }}
+          >
+            <i />
+          </button>
+        </div>
+
+        {/* Подтверждение удаления */}
+        <div className="settings-row">
+          <div>
+            <div className="settings-row-label">{t.confirmDelete}</div>
+            <div className="settings-row-desc">Спрашивать подтверждение перед удалением</div>
+          </div>
+          <button
+            type="button"
+            className="sw"
+            role="switch"
+            aria-checked={confirmDelete}
+            onClick={() => {
+              if (hapticsEnabled) triggerHaptic("selection");
+              setConfirmDelete(!confirmDelete);
+            }}
+          >
+            <i />
+          </button>
         </div>
       </div>
 
-      {/* ── 5. ДАННЫЕ ── */}
-      <div className="settings-section-hdr">{t.secData || "ДАННЫЕ"}</div>
+      {/* ── ВНЕШНИЙ ВИД ── */}
+      <div className="settings-group-title">{t.secAppearance}</div>
       <div className="settings-group">
-        <div
-          className="settings-row press"
-          style={{ cursor: "pointer" }}
-          onClick={handleClearCache}
-        >
-          <div className="settings-row-left">
-            <div className="settings-row-label" style={{ color: "#ff453a" }}>
-              {t.clearLocalCache || "Очистить локальный кэш"}
-            </div>
-            <div className="settings-row-desc">Сбросить сохранённые запросы и пересинхронизировать</div>
+        {/* Тема */}
+        <div className="settings-row">
+          <div>
+            <div className="settings-row-label">{t.theme}</div>
+            <div className="settings-row-desc">Оформление приложения</div>
           </div>
-          <svg viewBox="0 0 24 24" style={{ width: 18, height: 18, stroke: "#ff453a" }}>
-            <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-          </svg>
+          <div className="seg" style={{ width: 170, margin: 0, "--seg-cols": 3, "--seg-idx": theme === "auto" ? 0 : theme === "light" ? 1 : 2 } as React.CSSProperties}>
+            <i aria-hidden="true" />
+            <button className={theme === "auto" ? "on" : ""} onClick={() => handleThemeChange("auto")}>
+              Авто
+            </button>
+            <button className={theme === "light" ? "on" : ""} onClick={() => handleThemeChange("light")}>
+              Светлая
+            </button>
+            <button className={theme === "dark" ? "on" : ""} onClick={() => handleThemeChange("dark")}>
+              Тёмная
+            </button>
+          </div>
+        </div>
+
+        {/* Уменьшение движения */}
+        <div className="settings-row">
+          <div>
+            <div className="settings-row-label">{t.reducedMotion}</div>
+            <div className="settings-row-desc">Отключить фоновые эффекты и декоративные анимации</div>
+          </div>
+          <button
+            type="button"
+            className="sw"
+            role="switch"
+            aria-checked={reducedMotion}
+            onClick={() => {
+              if (hapticsEnabled) triggerHaptic("selection");
+              setReducedMotion(!reducedMotion);
+              document.documentElement.classList.toggle("perf-minimal", !reducedMotion);
+            }}
+          >
+            <i />
+          </button>
+        </div>
+
+        {/* Вибрация */}
+        <div className="settings-row">
+          <div>
+            <div className="settings-row-label">{t.haptics}</div>
+            <div className="settings-row-desc">Тактильный отклик при нажатии кнопок и переключателей</div>
+          </div>
+          <button
+            type="button"
+            className="sw"
+            role="switch"
+            aria-checked={hapticsEnabled}
+            onClick={() => {
+              if (hapticsEnabled) triggerHaptic("selection");
+              setHapticsEnabled(!hapticsEnabled);
+            }}
+          >
+            <i />
+          </button>
         </div>
       </div>
 
-      {/* ── 6. О ПРИЛОЖЕНИИ ── */}
-      <div className="settings-section-hdr">{t.secAbout || "О ПРИЛОЖЕНИИ"}</div>
+      {/* ── AI И ПАРСИНГ ── */}
+      <div className="settings-group-title">{t.secAI}</div>
       <div className="settings-group">
         <div className="settings-row">
-          <div className="settings-row-left">
-            <div className="settings-row-label">{t.versionLabel || "Версия"}</div>
+          <div>
+            <div className="settings-row-label">{t.autoCategory}</div>
+            <div className="settings-row-desc">Автоматическое определение категории при вводе</div>
           </div>
-          <div style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>
-            1.2.0 (Production)
+          <button
+            type="button"
+            className="sw"
+            role="switch"
+            aria-checked={autoCategory}
+            onClick={() => {
+              if (hapticsEnabled) triggerHaptic("selection");
+              setAutoCategory(!autoCategory);
+            }}
+          >
+            <i />
+          </button>
+        </div>
+      </div>
+
+      {/* ── ДАННЫЕ ── */}
+      <div className="settings-group-title">{t.secData}</div>
+      <div className="settings-group">
+        <div className="settings-row">
+          <div>
+            <div className="settings-row-label">Состояние сети</div>
+            <div className="settings-row-desc">{isOffline ? "Автономный режим (офлайн)" : "Подключено к серверу"}</div>
           </div>
+          <span style={{ fontSize: 13, fontWeight: 700, color: isOffline ? "var(--warn)" : "var(--ok)" }}>
+            {isOffline ? "Офлайн" : "Онлайн"}
+          </span>
         </div>
 
         <div className="settings-row">
-          <div className="settings-row-left">
-            <div className="settings-row-label">Telegram Bot</div>
+          <div>
+            <div className="settings-row-label">Купленные позиции</div>
+            <div className="settings-row-desc">Удалить все отмеченные товары</div>
           </div>
-          <div style={{ fontSize: 13, color: "var(--primary)", fontWeight: 600 }}>
-            @MatingD_bot
-          </div>
+          <button
+            type="button"
+            className="btn outline press"
+            style={{ width: "auto", height: 34, padding: "0 14px", fontSize: 13 }}
+            onClick={() => {
+              if (window.confirm("Удалить все купленные товары?")) {
+                clearPurchasedMutation.mutate();
+              }
+            }}
+          >
+            Очистить
+          </button>
         </div>
+      </div>
 
+      {/* ── О ПРИЛОЖЕНИИ ── */}
+      <div className="settings-group-title">{t.secAbout}</div>
+      <div className="settings-group">
         <div className="settings-row">
-          <div className="settings-row-left">
-            <div className="settings-row-label">{t.privacy || "Безопасность"}</div>
-            <div className="settings-row-desc">{t.privacyDesc || "HMAC-SHA256 валидация данных"}</div>
-          </div>
-          <div style={{ fontSize: 12, color: "#34c759", fontWeight: 700 }}>
-            Защищено
-          </div>
+          <span className="settings-row-label">Версия приложения</span>
+          <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>2.0 (Material 3 + Liquid Glass)</span>
+        </div>
+        <div className="settings-row">
+          <span className="settings-row-label">Telegram Бот</span>
+          <a
+            href="https://t.me/MatingD_bot"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ fontSize: 13, color: "var(--primary)", fontWeight: 700, textDecoration: "none" }}
+          >
+            @MatingD_bot ↗
+          </a>
         </div>
       </div>
     </div>

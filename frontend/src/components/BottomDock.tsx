@@ -22,7 +22,7 @@ export const BottomDock: React.FC = () => {
   return (
     <div className="chrome" id="chrome">
       <button
-        className="fab press"
+        className={`fab press ${activeTab !== "list" ? "hidden" : ""}`}
         id="fab"
         onClick={handleFabClick}
         aria-label={t.addTitle}

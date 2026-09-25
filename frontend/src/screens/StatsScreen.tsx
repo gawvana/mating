@@ -5,7 +5,7 @@ import { formatCurrency, translations } from "../i18n";
 import { useAppStore } from "../state/useAppStore";
 
 export const StatsScreen: React.FC = () => {
-  const { language } = useAppStore();
+  const { language, currency } = useAppStore();
   const t = translations[language];
 
   const {
@@ -20,19 +20,24 @@ export const StatsScreen: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="page-content" style={{ paddingTop: 80 }}>
-        <div className="spinner" />
+      <div style={{ paddingTop: 40, textAlign: "center", color: "var(--muted)" }}>
+        Загрузка статистики...
       </div>
     );
   }
 
   if (isError || !stats) {
     return (
-      <div className="page-content" style={{ paddingTop: 80 }}>
-        <div className="empty-state">
-          <h3>{t.errorLoadingTitle}</h3>
-          <p>{t.errorLoadingStats}</p>
-          <button className="btn outline" style={{ marginTop: 12 }} onClick={() => refetch()}>
+      <div style={{ paddingTop: 8 }}>
+        <div className="settings-group" style={{ textAlign: "center", padding: "32px 16px" }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 6px" }}>{t.errorLoadingTitle}</h3>
+          <p style={{ color: "var(--muted)", fontSize: 13, margin: 0 }}>{t.errorLoadingStats}</p>
+          <button
+            type="button"
+            className="btn outline"
+            style={{ width: "auto", margin: "14px auto 0", padding: "0 20px", height: 38 }}
+            onClick={() => refetch()}
+          >
             {t.retry}
           </button>
         </div>
@@ -44,29 +49,31 @@ export const StatsScreen: React.FC = () => {
   const isOverBudget = stats.budget_remaining !== null && stats.budget_remaining < 0;
 
   return (
-    <div className="page-content" style={{ paddingTop: 70 }}>
-      <h2 className="screen-title">{t.statsTitle}</h2>
-
-      {/* Total Spent Card */}
-      <div className="stat-card">
-        <div className="stat-label">{t.spentThisMonth}</div>
-        <div className="stat-value">
-          {formatCurrency(stats.total_spent, stats.currency_code, language)}
+    <div style={{ paddingTop: 8 }}>
+      {/* ── ОБЗОР РАСХОДОВ ── */}
+      <div className="settings-group-title">{t.statsTitle}</div>
+      <div className="settings-group" style={{ padding: 18 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".04em" }}>
+          {t.spentThisMonth}
         </div>
-        <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>
+        <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-.03em", marginTop: 4, color: "var(--on)" }}>
+          {formatCurrency(stats.total_spent, stats.currency_code || currency, language)}
+        </div>
+        <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 6, fontWeight: 500 }}>
           {stats.items_purchased_count} {t.itemsPurchasedLabel}
         </div>
       </div>
 
-      {/* Budget Card */}
-      <div className="stat-card">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div className="stat-label">{t.budget}</div>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>
+      {/* ── БЮДЖЕТ ── */}
+      <div className="settings-group-title">{t.budget}</div>
+      <div className="settings-group" style={{ padding: 18 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--muted)" }}>{t.budget}</span>
+          <span style={{ fontSize: 16, fontWeight: 700, color: "var(--on)" }}>
             {stats.monthly_budget
-              ? formatCurrency(stats.monthly_budget, stats.currency_code, language)
+              ? formatCurrency(stats.monthly_budget, stats.currency_code || currency, language)
               : t.noBudgetSet}
-          </div>
+          </span>
         </div>
 
         {stats.monthly_budget ? (
@@ -91,42 +98,45 @@ export const StatsScreen: React.FC = () => {
             >
               <span>{t.remaining}</span>
               <span>
-                {formatCurrency(stats.budget_remaining || 0, stats.currency_code, language)}
+                {formatCurrency(stats.budget_remaining || 0, stats.currency_code || currency, language)}
               </span>
             </div>
           </>
         ) : null}
       </div>
 
-      {/* Category Breakdown */}
-      <div className="stat-card">
-        <div className="stat-label" style={{ marginBottom: 12 }}>
-          {t.byCategory}
-        </div>
-
-        {stats.categories.length === 0 ? (
-          <div style={{ color: "var(--muted)", fontSize: 14, padding: "12px 0" }}>
-            {t.emptyStats}
+      {/* ── ПО КАТЕГОРИЯМ ── */}
+      {stats.categories && stats.categories.length > 0 && (
+        <>
+          <div className="settings-group-title">{t.byCategory}</div>
+          <div className="settings-group" style={{ padding: "6px 14px" }}>
+            {stats.categories.map((cat, idx) => (
+              <div
+                key={cat.category}
+                style={{
+                  padding: "12px 4px",
+                  borderBottom: idx < stats.categories.length - 1 ? "1px solid var(--outline)" : "none"
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontWeight: 600, fontSize: 14, color: "var(--on)" }}>
+                    {cat.category}
+                  </span>
+                  <span style={{ fontWeight: 700, fontSize: 14, color: "var(--on)" }}>
+                    {formatCurrency(cat.amount, stats.currency_code || currency, language)}
+                  </span>
+                </div>
+                <div className="stat-bar" style={{ height: 6, marginTop: 8 }}>
+                  <div
+                    className="stat-bar-fill"
+                    style={{ width: `${Math.min(100, cat.percentage)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
-        ) : (
-          stats.categories.map((cat) => (
-            <div key={cat.category} className="category-stat-row">
-              <div className="category-stat-info">
-                <span>{cat.category}</span>
-                <span>
-                  {formatCurrency(cat.amount, stats.currency_code, language)} ({cat.percentage}%)
-                </span>
-              </div>
-              <div className="stat-bar" style={{ marginTop: 4, height: 6 }}>
-                <div
-                  className="stat-bar-fill"
-                  style={{ width: `${Math.min(100, cat.percentage)}%` }}
-                />
-              </div>
-            </div>
-          ))
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 };

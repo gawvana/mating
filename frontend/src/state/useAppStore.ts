@@ -21,6 +21,9 @@ interface AppState {
   language: Language;
   setLanguage: (lang: Language) => void;
 
+  currency: "UZS" | "RUB" | "USD";
+  setCurrency: (currency: "UZS" | "RUB" | "USD") => void;
+
   // UX & Behavioral settings
   compactMode: boolean;
   setCompactMode: (enabled: boolean) => void;
@@ -103,6 +106,10 @@ const _initLanguage = (typeof localStorage !== "undefined"
   ? (localStorage.getItem("mating_lang") as Language | null)
   : null) ?? "ru";
 
+const _initCurrency = (typeof localStorage !== "undefined"
+  ? (localStorage.getItem("mating_currency") as "UZS" | "RUB" | "USD" | null)
+  : null) ?? "UZS";
+
 export const useAppStore = create<AppState>((set, get) => ({
   activeTab: "list",
   setActiveTab: (tab) => {
@@ -128,6 +135,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       localStorage.setItem("mating_lang", language);
     }
     set({ language });
+  },
+
+  currency: _initCurrency,
+  setCurrency: (currency) => {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("mating_currency", currency);
+    }
+    set({ currency });
   },
 
   compactMode: _initCompact,

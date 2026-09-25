@@ -1,5 +1,6 @@
 import { AIParseResponse, MonthlyStats, ShoppingItem, User } from "../types";
-import { getTelegramInitData } from "../telegram/telegram";
+import { getTelegramInitData, isTelegramWebApp } from "../telegram/telegram";
+import { parseShoppingTextDeterministically, calculateTotals } from "../utils/localParser";
 
 export class ApiError extends Error {
   code: string;
@@ -31,11 +32,77 @@ export function generateUUID(): string {
   });
 }
 
+// ── LOCAL STORAGE GUEST STORE (For standalone web browsing outside Telegram) ──
+const GUEST_ITEMS_KEY = "mating_guest_items";
+
+function getGuestItems(): ShoppingItem[] {
+  try {
+    const stored = localStorage.getItem(GUEST_ITEMS_KEY);
+    if (stored) return JSON.parse(stored);
+  } catch {}
+
+  // Initial starter items for first-time web visitors:
+  const initial: ShoppingItem[] = [
+    {
+      id: generateUUID(),
+      user_id: "guest",
+      name: "Помидоры",
+      quantity: 2,
+      unit: "кг",
+      category: "Овощи и фрукты",
+      price: 15000,
+      currency_code: "UZS",
+      is_purchased: false,
+      version: 1,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+    {
+      id: generateUUID(),
+      user_id: "guest",
+      name: "Молоко",
+      quantity: 1,
+      unit: "л",
+      category: "Молочные продукты",
+      price: 12000,
+      currency_code: "UZS",
+      is_purchased: false,
+      version: 1,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+    {
+      id: generateUUID(),
+      user_id: "guest",
+      name: "Хлеб",
+      quantity: 1,
+      unit: "шт",
+      category: "Хлеб и выпечка",
+      price: 5000,
+      currency_code: "UZS",
+      is_purchased: true,
+      purchased_at: new Date().toISOString(),
+      version: 1,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+  ];
+  saveGuestItems(initial);
+  return initial;
+}
+
+function saveGuestItems(items: ShoppingItem[]): void {
+  try {
+    localStorage.setItem(GUEST_ITEMS_KEY, JSON.stringify(items));
+  } catch {}
+}
+
 class ApiClient {
   private baseUrl: string = "";
 
   private getAuthHeader(): string {
     const token = getTelegramInitData();
+    if (!token) return "";
     if (token.startsWith("tma-test ") || token.startsWith("tma ")) {
       return token;
     }
@@ -45,7 +112,11 @@ class ApiClient {
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const headers = new Headers(options.headers || {});
     headers.set("Content-Type", "application/json");
-    headers.set("Authorization", this.getAuthHeader());
+
+    const auth = this.getAuthHeader();
+    if (auth) {
+      headers.set("Authorization", auth);
+    }
 
     const url = `${this.baseUrl}${endpoint}`;
 
@@ -85,8 +156,22 @@ class ApiClient {
     }
   }
 
-  // Profile & Settings
+  // ── Profile & Settings ──
   async getProfile(): Promise<User> {
+    if (!isTelegramWebApp()) {
+      return {
+        id: "guest-user",
+        telegram_id: 0,
+        username: "web_guest",
+        first_name: "Гость",
+        language_code: "ru",
+        currency_code: "UZS",
+        city: "Ташкент",
+        monthly_budget: 1000000,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+    }
     return this.request<User>("/api/v1/profile");
   }
 
@@ -96,14 +181,21 @@ class ApiClient {
     city?: string | null;
     monthly_budget?: number | null;
   }): Promise<User> {
+    if (!isTelegramWebApp()) {
+      const current = await this.getProfile();
+      return { ...current, ...data };
+    }
     return this.request<User>("/api/v1/settings", {
       method: "PUT",
       body: JSON.stringify(data),
     });
   }
 
-  // Shopping Items
+  // ── Shopping Items ──
   async getItems(): Promise<ShoppingItem[]> {
+    if (!isTelegramWebApp()) {
+      return getGuestItems();
+    }
     return this.request<ShoppingItem[]>("/api/v1/items");
   }
 
@@ -117,6 +209,27 @@ class ApiClient {
     raw_input_text?: string | null;
     client_mutation_id?: string;
   }): Promise<ShoppingItem> {
+    if (!isTelegramWebApp()) {
+      const items = getGuestItems();
+      const newItem: ShoppingItem = {
+        id: generateUUID(),
+        user_id: "guest",
+        name: data.name,
+        quantity: data.quantity ?? 1,
+        unit: data.unit ?? "шт",
+        category: data.category ?? "Другое",
+        price: data.price ?? null,
+        currency_code: data.currency_code ?? "UZS",
+        is_purchased: false,
+        version: 1,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      items.unshift(newItem);
+      saveGuestItems(items);
+      return newItem;
+    }
+
     const payload = {
       ...data,
       client_mutation_id: data.client_mutation_id || generateUUID(),
@@ -138,6 +251,27 @@ class ApiClient {
       raw_input_text?: string | null;
     }>
   ): Promise<ShoppingItem[]> {
+    if (!isTelegramWebApp()) {
+      const existing = getGuestItems();
+      const created: ShoppingItem[] = items.map((it) => ({
+        id: generateUUID(),
+        user_id: "guest",
+        name: it.name,
+        quantity: it.quantity ?? 1,
+        unit: it.unit ?? "шт",
+        category: it.category ?? "Другое",
+        price: it.price ?? null,
+        currency_code: it.currency_code ?? "UZS",
+        is_purchased: false,
+        version: 1,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }));
+      const updated = [...created, ...existing];
+      saveGuestItems(updated);
+      return created;
+    }
+
     const prepared = items.map((it) => ({
       ...it,
       client_mutation_id: generateUUID(),
@@ -161,6 +295,17 @@ class ApiClient {
       is_purchased?: boolean;
     }
   ): Promise<ShoppingItem> {
+    if (!isTelegramWebApp()) {
+      const items = getGuestItems();
+      const idx = items.findIndex((it) => it.id === id);
+      if (idx !== -1) {
+        items[idx] = { ...items[idx], ...data, version: version + 1, updated_at: new Date().toISOString() };
+        saveGuestItems(items);
+        return items[idx];
+      }
+      throw new ApiError("Item not found", "NOT_FOUND", 404);
+    }
+
     return this.request<ShoppingItem>(`/api/v1/items/${id}`, {
       method: "PATCH",
       body: JSON.stringify({ ...data, version }),
@@ -168,6 +313,24 @@ class ApiClient {
   }
 
   async togglePurchased(id: string, version: number): Promise<ShoppingItem> {
+    if (!isTelegramWebApp()) {
+      const items = getGuestItems();
+      const idx = items.findIndex((it) => it.id === id);
+      if (idx !== -1) {
+        const nextPurchased = !items[idx].is_purchased;
+        items[idx] = {
+          ...items[idx],
+          is_purchased: nextPurchased,
+          purchased_at: nextPurchased ? new Date().toISOString() : null,
+          version: version + 1,
+          updated_at: new Date().toISOString(),
+        };
+        saveGuestItems(items);
+        return items[idx];
+      }
+      throw new ApiError("Item not found", "NOT_FOUND", 404);
+    }
+
     return this.request<ShoppingItem>(`/api/v1/items/${id}/toggle`, {
       method: "PATCH",
       body: JSON.stringify({ version }),
@@ -175,6 +338,17 @@ class ApiClient {
   }
 
   async deleteItem(id: string): Promise<ShoppingItem> {
+    if (!isTelegramWebApp()) {
+      const items = getGuestItems();
+      const idx = items.findIndex((it) => it.id === id);
+      if (idx !== -1) {
+        const deleted = items.splice(idx, 1)[0];
+        saveGuestItems(items);
+        return deleted;
+      }
+      throw new ApiError("Item not found", "NOT_FOUND", 404);
+    }
+
     return this.request<ShoppingItem>(`/api/v1/items/${id}`, {
       method: "DELETE",
     });
@@ -187,21 +361,76 @@ class ApiClient {
   }
 
   async clearPurchased(): Promise<{ cleared_count: number }> {
+    if (!isTelegramWebApp()) {
+      const items = getGuestItems();
+      const active = items.filter((it) => !it.is_purchased);
+      const clearedCount = items.length - active.length;
+      saveGuestItems(active);
+      return { cleared_count: clearedCount };
+    }
+
     return this.request<{ cleared_count: number }>("/api/v1/items/clear-purchased", {
       method: "POST",
     });
   }
 
-  // AI Parsing
-  async parseAI(text: string): Promise<AIParseResponse> {
-    return this.request<AIParseResponse>("/api/v1/ai/parse", {
-      method: "POST",
-      body: JSON.stringify({ text }),
-    });
+  // ── AI Parsing (Dual-Tier: Local Fast Parser + Gemini) ──
+  async parseAI(text: string, signal?: AbortSignal): Promise<AIParseResponse> {
+    // 1. Fast deterministic parse first (0 ms response time!)
+    const local = parseShoppingTextDeterministically(text);
+    if (local && local.length > 0) {
+      return { items: local, raw_text: text };
+    }
+
+    // 2. Complex natural language -> backend Gemini API
+    if (isTelegramWebApp()) {
+      return this.request<AIParseResponse>("/api/v1/ai/parse", {
+        method: "POST",
+        body: JSON.stringify({ text }),
+        signal,
+      });
+    }
+
+    // Outside Telegram, return whatever local parser detected or empty
+    return { items: local || [], raw_text: text };
   }
 
-  // Monthly Stats
+  // ── Monthly Stats ──
   async getMonthlyStats(year?: number, month?: number): Promise<MonthlyStats> {
+    if (!isTelegramWebApp()) {
+      const items = getGuestItems();
+      const purchased = items.filter((it) => it.is_purchased);
+      const totals = calculateTotals(purchased);
+
+      const byCat: Record<string, { total: number; count: number }> = {};
+      for (const it of purchased) {
+        const cat = it.category || "Другое";
+        if (!byCat[cat]) byCat[cat] = { total: 0, count: 0 };
+        byCat[cat].count++;
+        if (it.price) byCat[cat].total += it.price * it.quantity;
+      }
+
+      const categories = Object.entries(byCat).map(([cat, val]) => ({
+        category: cat,
+        amount: val.total,
+        count: val.count,
+        percentage: totals.grandTotal > 0 ? Math.round((val.total / totals.grandTotal) * 100) : 0,
+      }));
+
+      return {
+        year: year || new Date().getFullYear(),
+        month: month || new Date().getMonth() + 1,
+        total_spent: totals.grandTotal,
+        currency_code: "UZS",
+        monthly_budget: 1000000,
+        budget_remaining: Math.max(0, 1000000 - totals.grandTotal),
+        budget_usage_percent: Math.min(100, Math.round((totals.grandTotal / 1000000) * 100)),
+        items_purchased_count: purchased.length,
+        active_items_count: items.length - purchased.length,
+        categories,
+      };
+    }
+
     const query = new URLSearchParams();
     if (year) query.set("year", year.toString());
     if (month) query.set("month", month.toString());
