@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # Telegram Bot
     BOT_TOKEN: str = ""
     WEBHOOK_SECRET: str = "mating-secret-token"
-    WEBAPP_URL: str = ""
+    WEBAPP_URL: str = "https://mating.vercel.app"
 
     # Database & Cache
     DATABASE_URL: str = "sqlite+aiosqlite:///./mating.db"
@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     # AI Configuration
     AI_PROVIDER: str = "gemini"  # gemini, groq, openai, heuristic
     AI_PRIMARY_KEY: str = ""
+    AI_API_KEY: str = ""  # alias used in Vercel
     AI_FALLBACK_KEY: str = ""
     AI_MODEL: str = "gemini-2.5-flash"
     AI_RATE_LIMIT_PER_MINUTE: int = 30
@@ -39,8 +40,23 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:3000",
+        "https://mating.vercel.app",
         "https://web.telegram.org",
+        "https://*.telegram.org",
     ]
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_database_url(cls, v: Any) -> str:
+        """Ensure standard asyncpg URL scheme for PostgreSQL connections."""
+        if not v or not isinstance(v, str):
+            return "sqlite+aiosqlite:///./mating.db"
+        url = v.strip()
+        if url.startswith("postgres://"):
+            url = "postgresql+asyncpg://" + url[len("postgres://"):]
+        elif url.startswith("postgresql://") and not url.startswith("postgresql+asyncpg://"):
+            url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+        return url
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
@@ -55,6 +71,10 @@ class Settings(BaseSettings):
         elif isinstance(v, (list, tuple)):
             return [str(i).strip() for i in v]
         return ["*"] if cls().APP_ENV == "development" else []
+
+    @property
+    def primary_ai_key(self) -> str:
+        return self.AI_PRIMARY_KEY or self.AI_API_KEY
 
     @property
     def is_production(self) -> bool:

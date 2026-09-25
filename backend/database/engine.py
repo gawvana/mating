@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from typing import Any
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -13,15 +14,37 @@ from sqlalchemy.ext.asyncio import (
 
 from backend.core.config import settings
 
-# Create async engine
+# Configure engine parameters according to dialect and serverless environment
+connect_args: dict[str, Any] = {}
+engine_kwargs: dict[str, Any] = {
+    "echo": settings.DEBUG,
+    "future": True,
+    "pool_pre_ping": True,
+}
+
+if "postgresql" in settings.DATABASE_URL:
+    # Supabase Transaction Pooler (PgBouncer) compatibility:
+    # Disable asyncpg prepared statement caching as required by transaction pooling
+    connect_args["statement_cache_size"] = 0
+
+    # Enforce SSL for remote Supabase / cloud connections
+    if any(k in settings.DATABASE_URL for k in ("supabase", "pooler", "aws", "render", "neon")) or settings.is_production:
+        connect_args["ssl"] = "require"
+
+    # Serverless connection pool limits: prevent exhaustion on burst invocations
+    engine_kwargs.update(
+        pool_size=5,
+        max_overflow=2,
+        pool_recycle=300,
+    )
+
 engine: AsyncEngine = create_async_engine(
     settings.DATABASE_URL,
-    echo=settings.DEBUG,
-    future=True,
-    pool_pre_ping=True,
+    connect_args=connect_args,
+    **engine_kwargs,
 )
 
-# Enable foreign keys for SQLite
+# Enable foreign keys for SQLite in local development / testing
 if settings.DATABASE_URL.startswith("sqlite"):
     @event.listens_for(engine.sync_engine, "connect")
     def _set_sqlite_pragma(dbapi_connection, connection_record):

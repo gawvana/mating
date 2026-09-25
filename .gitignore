@@ -5,6 +5,7 @@ __pycache__/
 *.so
 .Python
 env/
+venv/
 build/
 develop-eggs/
 dist/
@@ -32,7 +33,9 @@ htmlcov/
 
 # Environments & secrets
 .env
-.env.local
+.env.*
+!.env.example
+.vercel
 
 # Node & Frontend
 node_modules/

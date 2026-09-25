@@ -214,7 +214,7 @@ class AIService:
 
     def __init__(self):
         self.primary_provider = settings.AI_PROVIDER
-        self.primary_key = settings.AI_PRIMARY_KEY
+        self.primary_key = settings.primary_ai_key
         self.fallback_key = settings.AI_FALLBACK_KEY
         self.model = settings.AI_MODEL
 
