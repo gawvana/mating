@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 # ── Generic API Error Schema ──
@@ -69,6 +69,14 @@ class CreateItemRequest(BaseModel):
     raw_input_text: str | None = Field(default=None, max_length=500)
     client_mutation_id: str | None = Field(default=None, max_length=64)
 
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Item name cannot be empty or whitespace only")
+        return stripped
+
 
 class BatchCreateItemsRequest(BaseModel):
     items: list[CreateItemRequest]
@@ -83,6 +91,16 @@ class UpdateItemRequest(BaseModel):
     price: float | None = Field(None, ge=0)
     currency_code: str | None = Field(None, max_length=5)
     is_purchased: bool | None = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str | None) -> str | None:
+        if v is not None:
+            stripped = v.strip()
+            if not stripped:
+                raise ValueError("Item name cannot be empty or whitespace only")
+            return stripped
+        return None
 
 
 class ToggleItemRequest(BaseModel):
