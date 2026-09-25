@@ -142,6 +142,10 @@ def authenticate_tma_header(
             raise SecurityError("Test auth bypass not permitted", code="BYPASS_NOT_PERMITTED")
         try:
             test_data = json.loads(token)
+            if isinstance(test_data, (int, str)):
+                test_data = {"id": int(test_data), "first_name": "Test User"}
+            elif not isinstance(test_data, dict):
+                test_data = {"id": 1, "first_name": "Test User"}
             return {
                 "user": test_data,
                 "auth_date": int(time.time()),

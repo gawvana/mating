@@ -46,7 +46,17 @@ async def get_current_user(
         )
 
     tg_user = auth_payload["user"]
-    tg_id = tg_user.get("id")
+    if isinstance(tg_user, dict):
+        tg_id = tg_user.get("id")
+        username = tg_user.get("username")
+        first_name = tg_user.get("first_name")
+        lang = tg_user.get("language_code", "ru")
+    else:
+        tg_id = int(tg_user)
+        username = None
+        first_name = "User"
+        lang = "ru"
+
     if not tg_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -55,9 +65,6 @@ async def get_current_user(
 
     # Compute SHA-256 hash of telegram ID (NEVER store plaintext)
     tg_id_hash = hash_telegram_id(tg_id)
-    username = tg_user.get("username")
-    first_name = tg_user.get("first_name")
-    lang = tg_user.get("language_code", "ru")
 
     user_repo = UserRepository(session)
     user = await user_repo.get_or_create(
