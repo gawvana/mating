@@ -30,10 +30,10 @@ export const StatsScreen: React.FC = () => {
     return (
       <div className="page-content" style={{ paddingTop: 80 }}>
         <div className="empty-state">
-          <h3>Ошибка загрузки</h3>
-          <p>Не удалось получить аналитику расходов.</p>
+          <h3>{t.errorLoadingTitle}</h3>
+          <p>{t.errorLoadingStats}</p>
           <button className="btn outline" style={{ marginTop: 12 }} onClick={() => refetch()}>
-            Повторить
+            {t.retry}
           </button>
         </div>
       </div>
@@ -45,7 +45,7 @@ export const StatsScreen: React.FC = () => {
 
   return (
     <div className="page-content" style={{ paddingTop: 70 }}>
-      <h2 style={{ margin: "16px 4px 18px", fontSize: 26 }}>{t.statsTitle}</h2>
+      <h2 className="screen-title">{t.statsTitle}</h2>
 
       {/* Total Spent Card */}
       <div className="stat-card">
@@ -54,7 +54,7 @@ export const StatsScreen: React.FC = () => {
           {formatCurrency(stats.total_spent, stats.currency_code, language)}
         </div>
         <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>
-          {stats.items_purchased_count} купленных товаров
+          {stats.items_purchased_count} {t.itemsPurchasedLabel}
         </div>
       </div>
 

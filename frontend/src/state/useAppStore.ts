@@ -38,23 +38,52 @@ interface AppState {
   setSyncing: (status: boolean) => void;
 }
 
+// ── Apply theme to DOM immediately (before first render) to prevent flash ──
+// This runs once at module load — only in browser, safe for SSR/TMA.
+const _storedTheme = (typeof localStorage !== "undefined"
+  ? localStorage.getItem("mating_theme")
+  : null) as ThemeMode | null;
+
+const _initTheme: ThemeMode = _storedTheme ?? "auto";
+
+// Apply immediately to <html> before React mounts
+if (typeof document !== "undefined") {
+  if (_initTheme === "auto" || !_initTheme) {
+    document.documentElement.removeAttribute("data-theme");
+  } else {
+    document.documentElement.setAttribute("data-theme", _initTheme);
+  }
+}
+
+const _initLanguage = (typeof localStorage !== "undefined"
+  ? (localStorage.getItem("mating_lang") as Language | null)
+  : null) ?? "ru";
+
 export const useAppStore = create<AppState>((set) => ({
   activeTab: "list",
   setActiveTab: (tab) => {
-    triggerHaptic("selection");
     set({ activeTab: tab });
   },
 
-  theme: (localStorage.getItem("mating_theme") as ThemeMode) || "auto",
+  theme: _initTheme,
   setTheme: (theme) => {
-    localStorage.setItem("mating_theme", theme);
-    document.documentElement.setAttribute("data-theme", theme);
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("mating_theme", theme);
+    }
+    // "auto" → remove attribute so OS preference governs
+    if (theme === "auto") {
+      document.documentElement.removeAttribute("data-theme");
+    } else {
+      document.documentElement.setAttribute("data-theme", theme);
+    }
     set({ theme });
   },
 
-  language: (localStorage.getItem("mating_lang") as Language) || "ru",
+  language: _initLanguage,
   setLanguage: (language) => {
-    localStorage.setItem("mating_lang", language);
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("mating_lang", language);
+    }
     set({ language });
   },
 
@@ -71,17 +100,14 @@ export const useAppStore = create<AppState>((set) => ({
     set({ isSheetOpen: false, sheetInitialText: "" });
   },
   setSheetMode: (sheetMode) => {
-    triggerHaptic("selection");
     set({ sheetMode });
   },
 
   undoToast: null,
-  showUndoToast: (id, name) => {
-    set({ undoToast: { id, name } });
-  },
+  showUndoToast: (id, name) => set({ undoToast: { id, name } }),
   clearUndoToast: () => set({ undoToast: null }),
 
-  isOffline: !navigator.onLine,
+  isOffline: typeof navigator !== "undefined" ? !navigator.onLine : false,
   isSyncing: false,
   setOffline: (isOffline) => set({ isOffline }),
   setSyncing: (isSyncing) => set({ isSyncing }),

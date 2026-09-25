@@ -26,6 +26,7 @@ export const AddSheet: React.FC = () => {
 
   const sheetRef = useRef<HTMLDivElement>(null);
   const dragStartY = useRef<number | null>(null);
+  const dragStartTime = useRef<number>(0);
   const currentDragY = useRef<number>(0);
 
   // Quick Add Form state
@@ -39,17 +40,63 @@ export const AddSheet: React.FC = () => {
   const [aiText, setAiText] = useState("");
   const [parsedItems, setParsedItems] = useState<AIParsedItem[]>([]);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
+  const [parseError, setParseError] = useState<string | null>(null);
 
-  // Escape key handler
+  // Segmented control: 0 = quick, 1 = ai
+  const segIdx = sheetMode === "quick" ? 0 : 1;
+
+  // Escape key and focus trap
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isSheetOpen) {
+      if (!isSheetOpen) return;
+      if (e.key === "Escape") {
         closeSheet();
+        return;
+      }
+      // Focus trap inside sheet
+      if (e.key === "Tab" && sheetRef.current) {
+        const focusable = Array.from(
+          sheetRef.current.querySelectorAll<HTMLElement>(
+            "button, input, select, textarea, [tabindex]:not([tabindex='-1'])"
+          )
+        ).filter((el) => !(el as HTMLButtonElement | HTMLInputElement).disabled && el.offsetParent !== null);
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isSheetOpen, closeSheet]);
+
+  // Manage #app / dock inert when sheet opens — keeps screen reader focus inside sheet
+  useEffect(() => {
+    const appEl = document.getElementById("app");
+    const dockEl = document.getElementById("dock");
+    if (isSheetOpen) {
+      appEl?.setAttribute("inert", "");
+      dockEl?.setAttribute("inert", "");
+      // Focus first focusable in sheet after open transition
+      const timer = setTimeout(() => {
+        const first = sheetRef.current?.querySelector<HTMLElement>(
+          "button, input, select, textarea"
+        );
+        first?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    } else {
+      appEl?.removeAttribute("inert");
+      dockEl?.removeAttribute("inert");
+      document.getElementById("fab")?.focus();
+    }
+  }, [isSheetOpen]);
 
   // Reset form when sheet opens
   useEffect(() => {
@@ -62,24 +109,28 @@ export const AddSheet: React.FC = () => {
       setAiText("");
       setParsedItems([]);
       setSelectedIndices(new Set());
+      setParseError(null);
     }
   }, [isSheetOpen]);
 
-  // Touch drag to dismiss with pointer events and direct DOM transform (ZERO React re-renders during drag)
+  // ── Drag-to-dismiss (velocity-aware, zero React re-renders during drag) ──
+  // Mirrors reference implementation: velocity = dy / dt; dismiss if dy>110 OR v>0.6
   const handlePointerDown = (e: React.PointerEvent) => {
+    if (!sheetRef.current) return;
     dragStartY.current = e.clientY;
+    dragStartTime.current = e.timeStamp;
     currentDragY.current = 0;
+    sheetRef.current.style.transition = "none";
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
     if (dragStartY.current === null || !sheetRef.current) return;
-    const deltaY = e.clientY - dragStartY.current;
-    if (deltaY > 0) {
-      currentDragY.current = deltaY;
-      sheetRef.current.style.transform = `translate(-50%, ${deltaY}px)`;
-      sheetRef.current.style.transition = "none";
-    }
+    const dy = e.clientY - dragStartY.current;
+    if (dy <= 0) return; // Never drag upward
+    currentDragY.current = dy;
+    // Mirror reference: upward drag is dampened by 0.12, downward is 1:1
+    sheetRef.current.style.transform = `translate(-50%, ${dy}px)`;
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
@@ -89,28 +140,31 @@ export const AddSheet: React.FC = () => {
     } catch {
       // ignore
     }
-    const finalDeltaY = currentDragY.current;
+    const dy = currentDragY.current;
+    const dt = Math.max(1, e.timeStamp - dragStartTime.current);
+    // velocity in px/ms — matches reference threshold v > 0.6
+    const velocity = dy / dt;
+
     dragStartY.current = null;
     sheetRef.current.style.transition = "";
+    sheetRef.current.style.transform = "";
 
-    if (finalDeltaY > 100) {
+    if (dy > 110 || velocity > 0.6) {
       closeSheet();
-    } else {
-      sheetRef.current.style.transform = "translate(-50%, 0)";
     }
+    // else: CSS transition snaps back to translate(-50%, 0) via .sheet.open rule
   };
 
-  // Quick Add Mutation
+  // ── Mutations ─────────────────────────────────────────────────────────────
   const createMutation = useMutation({
-    mutationFn: async () => {
-      return api.createItem({
+    mutationFn: async () =>
+      api.createItem({
         name: name.trim(),
         quantity: parseFloat(quantity) || 1.0,
         unit: unit.trim() || "шт",
         category: category || "Другое",
         price: price ? parseFloat(price) : null,
-      });
-    },
+      }),
     onSuccess: () => {
       triggerHaptic("success");
       queryClient.invalidateQueries({ queryKey: ["items"] });
@@ -119,22 +173,20 @@ export const AddSheet: React.FC = () => {
     },
   });
 
-  // AI Parse Mutation
   const parseMutation = useMutation({
-    mutationFn: async (text: string) => {
-      return api.parseAI(text);
-    },
+    mutationFn: async (text: string) => api.parseAI(text),
     onSuccess: (data) => {
       triggerHaptic("medium");
+      setParseError(null);
       setParsedItems(data.items);
       setSelectedIndices(new Set(data.items.map((_, idx) => idx)));
     },
     onError: () => {
       triggerHaptic("error");
+      setParseError(t.aiError ?? "Ошибка парсинга. Попробуйте ещё раз.");
     },
   });
 
-  // Batch Add Mutation
   const batchAddMutation = useMutation({
     mutationFn: async () => {
       const selected = parsedItems.filter((_, idx) => selectedIndices.has(idx));
@@ -161,11 +213,7 @@ export const AddSheet: React.FC = () => {
     triggerHaptic("selection");
     setSelectedIndices((prev) => {
       const next = new Set(prev);
-      if (next.has(index)) {
-        next.delete(index);
-      } else {
-        next.add(index);
-      }
+      next.has(index) ? next.delete(index) : next.add(index);
       return next;
     });
   };
@@ -179,6 +227,7 @@ export const AddSheet: React.FC = () => {
   const handleParseSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!aiText.trim()) return;
+    setParseError(null);
     parseMutation.mutate(aiText);
   };
 
@@ -197,6 +246,7 @@ export const AddSheet: React.FC = () => {
         aria-modal="true"
         aria-label={t.addTitle}
       >
+        {/* Drag handle — pointer events only on this zone */}
         <div
           className="sheet-handle-zone"
           onPointerDown={handlePointerDown}
@@ -209,18 +259,24 @@ export const AddSheet: React.FC = () => {
 
         <h3 className="sheet-title">{t.addTitle}</h3>
 
-        <div className="seg" style={{ "--seg-cols": 2 } as React.CSSProperties}>
+        {/* Segmented control with spring-animated pill indicator */}
+        <div
+          className="seg"
+          style={{ "--seg-cols": 2, "--seg-idx": segIdx } as React.CSSProperties}
+        >
+          {/* Pill indicator — CSS animates via --seg-idx */}
+          <i aria-hidden="true" />
           <button
             type="button"
             className={sheetMode === "quick" ? "on" : ""}
-            onClick={() => setSheetMode("quick")}
+            onClick={() => { triggerHaptic("selection"); setSheetMode("quick"); }}
           >
             {t.quickTab}
           </button>
           <button
             type="button"
             className={sheetMode === "ai" ? "on" : ""}
-            onClick={() => setSheetMode("ai")}
+            onClick={() => { triggerHaptic("selection"); setSheetMode("ai"); }}
           >
             {t.aiTab}
           </button>
@@ -260,9 +316,7 @@ export const AddSheet: React.FC = () => {
                   onChange={(e) => setUnit(e.target.value)}
                 >
                   {UNITS.map((u) => (
-                    <option key={u} value={u}>
-                      {u}
-                    </option>
+                    <option key={u} value={u}>{u}</option>
                   ))}
                 </select>
               </div>
@@ -275,9 +329,7 @@ export const AddSheet: React.FC = () => {
                 onChange={(e) => setCategory(e.target.value)}
               >
                 {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
+                  <option key={c} value={c}>{c}</option>
                 ))}
               </select>
             </div>
@@ -327,6 +379,27 @@ export const AddSheet: React.FC = () => {
 
             {parseMutation.isPending && <div className="spinner" />}
 
+            {/* Error state with retry — no silent failures */}
+            {parseError && !parseMutation.isPending && (
+              <div
+                style={{
+                  background: "var(--err-c)", color: "var(--on-err-c)",
+                  borderRadius: "var(--r2)", padding: "12px 16px",
+                  marginBottom: 12, fontSize: 14,
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                }}
+              >
+                <span>{parseError}</span>
+                <button
+                  type="button"
+                  style={{ fontWeight: 700, textDecoration: "underline", flexShrink: 0 }}
+                  onClick={() => { setParseError(null); parseMutation.mutate(aiText); }}
+                >
+                  {t.retry ?? "Повторить"}
+                </button>
+              </div>
+            )}
+
             {parsedItems.length > 0 && (
               <div>
                 <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>
@@ -339,12 +412,14 @@ export const AddSheet: React.FC = () => {
                     return (
                       <div
                         key={idx}
-                        className="ai-preview-item"
+                        className="ai-preview-item press"
                         onClick={() => toggleItemSelection(idx)}
+                        role="checkbox"
+                        aria-checked={isSelected}
                       >
                         <div className={`ai-preview-check ${isSelected ? "on" : ""}`}>
                           {isSelected && (
-                            <svg viewBox="0 0 24 24">
+                            <svg viewBox="0 0 24 24" style={{ width: 14, height: 14 }}>
                               <polyline points="20 6 9 17 4 12" />
                             </svg>
                           )}

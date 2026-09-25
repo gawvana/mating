@@ -145,10 +145,10 @@ export const ListScreen: React.FC = () => {
 
       {isError && (
         <div className="empty-state">
-          <h3>Ошибка загрузки</h3>
-          <p>Не удалось загрузить список покупок.</p>
+          <h3>{t.errorLoadingTitle}</h3>
+          <p>{t.errorLoading}</p>
           <button className="btn outline" style={{ marginTop: 12 }} onClick={() => refetch()}>
-            Повторить
+            {t.retry}
           </button>
         </div>
       )}

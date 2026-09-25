@@ -79,7 +79,7 @@ export const SettingsScreen: React.FC = () => {
 
   return (
     <div className="page-content" style={{ paddingTop: 70 }}>
-      <h2 style={{ margin: "16px 4px 18px", fontSize: 26 }}>{t.settingsTitle}</h2>
+      <h2 className="screen-title">{t.settingsTitle}</h2>
 
       {saveSuccess && (
         <div
@@ -204,7 +204,7 @@ export const SettingsScreen: React.FC = () => {
           className="btn"
           disabled={updateSettingsMutation.isPending}
         >
-          {updateSettingsMutation.isPending ? t.syncing : t.saved}
+          {updateSettingsMutation.isPending ? t.syncing : t.savePreferences}
         </button>
       </form>
     </div>

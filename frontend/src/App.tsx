@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "./api/client";
 import { AddSheet } from "./components/AddSheet";
@@ -14,26 +14,91 @@ import { initTelegramApp } from "./telegram/telegram";
 
 export const App: React.FC = () => {
   const queryClient = useQueryClient();
-  const { activeTab, setOffline, setSyncing, theme } = useAppStore();
+  const { activeTab, setOffline, setSyncing } = useAppStore();
+  const appRef = useRef<HTMLDivElement>(null);
+  const aurRef = useRef<HTMLDivElement>(null);
+  const scrollLastY = useRef(0);
+  const scrollTick = useRef(false);
 
-  // Initialize Telegram Mini App environment & theme
+  // ── One-time initialization ──────────────────────────────────────────────
   useEffect(() => {
+    // 1. Telegram Mini App environment
     initTelegramApp();
 
-    const storedTheme = localStorage.getItem("mating_theme");
-    if (storedTheme) {
-      document.documentElement.setAttribute("data-theme", storedTheme);
-    } else if (window.Telegram?.WebApp?.colorScheme) {
-      document.documentElement.setAttribute("data-theme", window.Telegram.WebApp.colorScheme);
+    // 2. Apply persisted theme without flash (already set as data-theme attr from store init)
+    //    If theme is "auto" we remove the attribute so OS preference governs
+    const stored = localStorage.getItem("mating_theme");
+    if (stored && stored !== "auto") {
+      document.documentElement.setAttribute("data-theme", stored);
+    } else if (stored === "auto" || !stored) {
+      document.documentElement.removeAttribute("data-theme");
+      // Follow Telegram color scheme if available
+      if (window.Telegram?.WebApp?.colorScheme) {
+        document.documentElement.setAttribute("data-theme", window.Telegram.WebApp.colorScheme);
+      }
     }
-  }, [theme]);
 
-  // Online / Offline listener & queue replay
+    // 3. Enable Chromium refraction enhancement
+    const isChromium = /Chrom(e|ium)\//.test(navigator.userAgent) && !/Firefox/.test(navigator.userAgent);
+    if (isChromium) document.documentElement.classList.add("refract");
+
+    // 4. Pointer tracking for glass specular (--ang) and hover glow (--mx, --my)
+    //    Runs as a passive listener — zero layout thrash
+    const handlePointerMove = (e: PointerEvent) => {
+      const ang = 135 + (e.clientX / innerWidth - 0.5) * 70 + (e.clientY / innerHeight - 0.5) * 40;
+      document.documentElement.style.setProperty("--ang", `${ang}deg`);
+
+      // Update hover glow origin on whichever glass surface the pointer is over
+      const glassEl = (e.target as Element)?.closest?.(".glass") as HTMLElement | null;
+      if (glassEl) {
+        const r = glassEl.getBoundingClientRect();
+        glassEl.style.setProperty("--mx", `${e.clientX - r.left}px`);
+        glassEl.style.setProperty("--my", `${e.clientY - r.top}px`);
+      }
+    };
+    document.addEventListener("pointermove", handlePointerMove, { passive: true });
+
+    return () => {
+      document.removeEventListener("pointermove", handlePointerMove);
+    };
+  }, []);
+
+  // ── Scroll spy: compact nav + aura parallax ──────────────────────────────
+  // ONE rAF per scroll event — zero setState per scroll tick
+  useEffect(() => {
+    const appEl = appRef.current;
+    const aurEl = aurRef.current;
+    if (!appEl) return;
+
+    const handleScroll = () => {
+      if (scrollTick.current) return;
+      scrollTick.current = true;
+      requestAnimationFrame(() => {
+        scrollTick.current = false;
+        const y = appEl.scrollTop;
+        const d = y - scrollLastY.current;
+
+        // Compact nav on scroll
+        appEl.classList.toggle("sc", y > 30);
+
+        // Parallax aura blobs via CSS var (no React state)
+        if (aurEl) aurEl.style.setProperty("--sy", String(y));
+
+        scrollLastY.current = y;
+        // Suppress unused warning
+        void d;
+      });
+    };
+
+    appEl.addEventListener("scroll", handleScroll, { passive: true });
+    return () => appEl.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // ── Online / Offline listener & queue replay ─────────────────────────────
   useEffect(() => {
     const handleOnline = async () => {
       setOffline(false);
       setSyncing(true);
-
       try {
         const pending = await getPendingMutations();
         for (const item of pending) {
@@ -53,9 +118,7 @@ export const App: React.FC = () => {
       }
     };
 
-    const handleOffline = () => {
-      setOffline(true);
-    };
+    const handleOffline = () => setOffline(true);
 
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
@@ -68,7 +131,7 @@ export const App: React.FC = () => {
 
   return (
     <>
-      {/* SVG refraction filter */}
+      {/* SVG refraction filter (Chromium only, activated via html.refract class) */}
       <svg className="defs" aria-hidden="true">
         <filter id="lg" x="0" y="0" width="100%" height="100%" colorInterpolationFilters="sRGB">
           <feImage
@@ -80,20 +143,20 @@ export const App: React.FC = () => {
         </filter>
       </svg>
 
-      <div id="app">
+      <div id="app" ref={appRef}>
         <div className="page">
-          {/* Aura decorative background blobs */}
-          <div className="aur" aria-hidden="true">
-            <i className="b" style={{ "--c": "var(--p)", "--k": -0.12, left: -160, top: 40 } as any} />
-            <i className="b" style={{ "--c": "var(--t)", "--k": -0.2, right: -200, top: "22%" } as any} />
-            <i className="b" style={{ "--c": "var(--primary)", "--k": -0.08, left: -200, top: "48%", opacity: 0.35 } as any} />
-            <i className="b" style={{ "--c": "var(--t)", "--k": -0.15, right: -160, top: "74%" } as any} />
+          {/* Aura decorative background blobs — CSS animation only, no RAF */}
+          <div className="aur" aria-hidden="true" ref={aurRef}>
+            <i className="b" style={{ "--c": "var(--p)", "--k": -0.12, left: -160, top: 40 } as React.CSSProperties} />
+            <i className="b" style={{ "--c": "var(--t)", "--k": -0.2, right: -200, top: "22%" } as React.CSSProperties} />
+            <i className="b" style={{ "--c": "var(--primary)", "--k": -0.08, left: -200, top: "48%", opacity: 0.35 } as React.CSSProperties} />
+            <i className="b" style={{ "--c": "var(--t)", "--k": -0.15, right: -160, top: "74%" } as React.CSSProperties} />
           </div>
 
           {/* Sticky Glass Navigation Bar */}
           <NavBar />
 
-          {/* Active Screen View */}
+          {/* Active Screen */}
           <main className="wrap">
             {activeTab === "list" && <ListScreen />}
             {activeTab === "stats" && <StatsScreen />}

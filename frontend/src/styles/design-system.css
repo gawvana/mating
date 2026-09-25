@@ -1,9 +1,12 @@
 /*
- * MATTERING v2 — Design System CSS
- * Extracted 1:1 from index.html design system.
+ * MATTERING v2 — Design System CSS for Mating
+ * Tokens extracted 1:1 from index.html reference.
  * Material 3 Expressive (color + shape) + Apple Liquid Glass (material + motion).
  *
- * Three layers: 1) Content — tonal (color roles), 2) Controls — glass (nav/dock/sheet/FAB), 3) Motion — springs.
+ * Three layers (never mixed):
+ *   1) Content  — tonal  (cards, panels, item rows)
+ *   2) Controls — glass  (nav, dock, FAB, sheet, floating)
+ *   3) Motion   — springs (nothing moves linearly)
  */
 
 /* ── TOKENS ── */
@@ -90,14 +93,14 @@
   --e2: 0 8px 20px rgba(30,30,60,.14);
   --e3: 0 16px 40px rgba(30,30,60,.18);
 
-  /* Easing — spring physics */
+  /* Easing — spring physics (exact values from reference) */
   --spring: cubic-bezier(.34,1.3,.64,1);
   --bounce: cubic-bezier(.3,1.6,.5,1);
   --sheet: cubic-bezier(.32,.72,0,1);
   --gentle: cubic-bezier(.25,1,.4,1);
 }
 
-/* Enhanced spring with linear() where supported */
+/* Enhanced spring with linear() where supported (exact from reference) */
 @supports (transition-timing-function: linear(0,1)) {
   :root {
     --spring: linear(0,.05 2%,.25 6%,.6 12%,.9 19%,1.04 26%,1.06 31%,1.03 38%,.995 48%,.99 56%,1.004 70%,1);
@@ -200,35 +203,13 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #FBF8FF;
-  --on: #1B1B21;
-  --muted: #5F6070;
-  --outline: rgba(27,27,33,.16);
-  --track: rgba(27,27,33,.09);
-  --off: rgba(120,120,140,.4);
-  --primary: #4F5DFF;
-  --on-primary: #fff;
-  --p: #DDE0FF;
-  --on-p: #151C7A;
-  --s: #E1E0F9;
-  --on-s: #1C1C30;
-  --t: #FFD8F0;
-  --on-t: #3E0A33;
-  --n: #EDEBF3;
-  --on-n: #3A3B47;
-  --glass: rgba(255,255,255,.34);
-  --glass2: rgba(255,255,255,.62);
-  --glass-solid: #F1EEF9;
-  --edge: rgba(255,255,255,.7);
-  --sh: rgba(40,44,110,.2);
-  --glow: rgba(255,255,255,.6);
-  --thumb: #fff;
 }
 
 /* ── RESET ── */
 *, *::before, *::after { box-sizing: inherit }
 html, body { height: 100%; margin: 0 }
-html { scroll-padding-top: env(safe-area-inset-top, 0px); background: var(--bg) }
+/* html background: dark behind the app so sheet-open scale looks right */
+html { scroll-padding-top: env(safe-area-inset-top, 0px); background: #0b0b10 }
 
 body {
   background: var(--bg);
@@ -237,6 +218,7 @@ body {
   overflow: hidden;
   transition: background .6s var(--sheet);
 }
+/* When sheet is open body dims to near-black */
 body.open { background: #0b0b10 }
 
 button {
@@ -270,25 +252,27 @@ body.open #app {
   overflow: hidden;
 }
 
-.page { position: relative; min-height: 100vh }
+.page { position: relative }
 
-/* ── AURA BACKGROUND ── */
+/* ── AURA BACKGROUND BLOBS ── */
+/* Pure CSS animation, zero JS per scroll tick; parallax via --sy CSS var only */
 .aur { position: absolute; inset: 0; overflow: hidden; pointer-events: none }
 .b {
   position: absolute; width: 560px; height: 560px; border-radius: 50%;
   background: radial-gradient(closest-side, var(--c), transparent);
-  opacity: .5;
+  opacity: .6;
   translate: 0 calc(var(--sy, 0) * var(--k) * 1px);
   animation: dr 16s ease-in-out infinite alternate;
 }
-@keyframes dr { to { transform: translate(40px, 30px) scale(1.1) } }
+@keyframes dr { to { transform: translate(50px, 40px) scale(1.15) } }
 
 .wrap {
   position: relative; max-width: 720px;
-  margin: 0 auto; padding: 0 16px 200px;
+  margin: 0 auto; padding: 0 16px 220px;
 }
 
-/* ── GLASS MATERIAL ── */
+/* ── GLASS MATERIAL (4-layer Apple Liquid Glass) ── */
+/* Only on: header, bottom dock, FAB, sheet, floating controls — max 3–4 on screen */
 .glass {
   position: relative;
   background: var(--glass);
@@ -297,13 +281,15 @@ body.open #app {
   border: 1px solid var(--edge);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.4), 0 10px 30px var(--sh);
 }
+/* Fallback for no backdrop-filter support */
 @supports not (backdrop-filter: blur(10px)) {
   .glass { background: var(--glass-solid) }
 }
+/* Refraction enhancement (Chromium only, set via JS) */
 html.refract .glass {
   backdrop-filter: url(#lg) blur(calc(var(--blur) * .35)) saturate(170%);
 }
-/* Specular rim highlight */
+/* Specular rim highlight — reacts to pointer via --ang CSS var */
 .glass::before {
   content: ""; position: absolute; inset: 0;
   border-radius: inherit; padding: 1.5px; pointer-events: none;
@@ -312,7 +298,7 @@ html.refract .glass {
   -webkit-mask-composite: xor;
   mask-composite: exclude;
 }
-/* Hover glow */
+/* Hover glow (pointer position via --mx/--my CSS vars) */
 .glass::after {
   content: ""; position: absolute; inset: 0;
   border-radius: inherit; pointer-events: none;
@@ -321,7 +307,7 @@ html.refract .glass {
 }
 .glass:hover::after { opacity: 1 }
 
-/* ── PRESS INTERACTION ── */
+/* ── PRESS INTERACTION (spring scale, exact from reference) ── */
 .press {
   transition: transform .55s var(--spring), filter .3s;
 }
@@ -331,6 +317,7 @@ html.refract .glass {
 }
 
 /* ── NAV BAR (glass sticky) ── */
+/* Reference: top: calc(12px + safe-area-inset-top); height 56px; font 16px/-0.01em */
 .nav {
   position: sticky;
   top: calc(12px + env(safe-area-inset-top, 0px));
@@ -340,13 +327,25 @@ html.refract .glass {
   height: 56px;
   border-radius: 28px;
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0 12px 0 22px;
+  padding: 0 8px 0 22px;
   transition: height .6s var(--spring), border-radius .6s var(--spring), margin .6s var(--spring);
 }
+/* Compact nav on scroll (applied by JS via #app.sc class) */
+#app.sc .nav { height: 46px; margin-top: 6px; border-radius: 23px }
+#app.sc .nav b { font-size: 14px }
+
 .nav-brand { display: flex; align-items: center; gap: 8px }
-.nav b { font-weight: 700; font-size: 17px; letter-spacing: -.02em }
+/* exact reference: font-weight 700, font-size 16px, letter-spacing -0.01em */
+.nav b { font-weight: 700; font-size: 16px; letter-spacing: -.01em; transition: font-size .5s var(--spring) }
 .nav-actions { display: flex; align-items: center; gap: 6px }
 
+/* Icon button in nav */
+.ib {
+  width: 42px; height: 42px; border-radius: 50%;
+  display: grid; place-items: center; color: var(--muted);
+}
+
+/* Offline / syncing status badges */
 .badge-offline {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 4px 8px; border-radius: var(--rf);
@@ -360,17 +359,13 @@ html.refract .glass {
   background: var(--p); color: var(--on-p);
 }
 
-.ib {
-  width: 42px; height: 42px; border-radius: 50%;
-  display: grid; place-items: center; color: var(--muted);
-}
-
 /* ── GREETING & CHIPS ── */
+/* Compact heading — NOT the hero demo title from reference */
 .greeting {
   padding: 60px 4px 10px;
 }
 .greeting h1 {
-  font-size: 28px; font-weight: 800; letter-spacing: -.03em; margin: 0 0 4px;
+  font-size: 26px; font-weight: 800; letter-spacing: -.03em; margin: 0 0 4px;
 }
 .greeting p { color: var(--muted); margin: 0; font-size: 15px }
 
@@ -383,7 +378,6 @@ html.refract .glass {
   padding: 8px 14px; border-radius: var(--rf);
   font-weight: 600; font-size: 13px;
   background: var(--p); color: var(--on-p);
-  border: 1px solid var(--edge);
 }
 .summary-chip.accent { background: var(--primary); color: var(--on-primary) }
 
@@ -402,6 +396,7 @@ html.refract .glass {
 }
 
 /* ── ITEM ROW ── */
+/* Tonal (--n container) — NO glass — pure tonal content layer */
 .item-row {
   display: flex; align-items: center; gap: 12px;
   padding: 12px 16px; border-radius: var(--r3);
@@ -413,9 +408,7 @@ html.refract .glass {
   user-select: none;
 }
 .item-row:active { transform: scale(.98); transition-duration: .15s }
-.item-row.purchased {
-  opacity: .55;
-}
+.item-row.purchased { opacity: .55 }
 .item-row.purchased .item-name { text-decoration: line-through }
 
 .item-check {
@@ -437,9 +430,7 @@ html.refract .glass {
 
 .item-price { font-weight: 700; font-size: 14px; white-space: nowrap }
 
-.item-actions {
-  display: flex; align-items: center; gap: 4px;
-}
+.item-actions { display: flex; align-items: center; gap: 4px }
 .item-action-btn {
   width: 32px; height: 32px; border-radius: 50%;
   display: grid; place-items: center; color: var(--muted);
@@ -494,6 +485,7 @@ html.refract .glass {
 }
 
 /* ── STATS SCREEN ── */
+/* Tonal stat cards — NO glass */
 .stat-card {
   background: var(--n); color: var(--on-n);
   border-radius: var(--r4); padding: 20px;
@@ -571,6 +563,7 @@ textarea.input-field {
 }
 
 /* ── BUTTONS ── */
+/* Reference: height 50px, radius 25px, active→radius 14px + scale(.96), bounce transition */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   height: 50px; padding: 0 20px; border-radius: 25px;
@@ -579,29 +572,41 @@ textarea.input-field {
   width: 100%;
 }
 .btn:active {
-  border-radius: 16px; transform: scale(.96); transition-duration: .15s;
+  border-radius: 14px; transform: scale(.96); transition-duration: .15s;
 }
 .btn.secondary { background: var(--p); color: var(--on-p) }
 .btn.outline { background: transparent; border: 1.5px solid var(--outline); color: var(--on) }
+.btn:disabled { opacity: .5; pointer-events: none }
 
-/* ── SEGMENTED CONTROL ── */
+/* ── SEGMENTED CONTROL (pill slider) ── */
+/* Reference: sliding <i> pill indicator (spring translate), NOT button background swap */
 .seg {
   position: relative;
   display: grid; grid-template-columns: repeat(var(--seg-cols, 2), 1fr);
   background: var(--track); border-radius: 22px; padding: 4px;
   touch-action: none; user-select: none; margin-bottom: 16px;
 }
+/* The sliding pill — positioned absolutely, animated via --seg-idx */
+.seg i {
+  position: absolute;
+  top: 4px; bottom: 4px; left: 4px;
+  width: calc((100% - 8px) / var(--seg-cols, 2));
+  border-radius: 18px;
+  background: var(--thumb);
+  box-shadow: 0 2px 8px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.5);
+  transform: translateX(calc(var(--seg-idx, 0) * 100%));
+  transition: transform .6s var(--spring);
+  pointer-events: none;
+}
 .seg button {
   position: relative; height: 38px; font-weight: 600;
-  color: var(--muted); transition: color .25s; border-radius: 18px;
+  color: var(--muted); transition: color .25s;
+  border-radius: 18px; z-index: 1;
 }
-.seg button.on {
-  color: var(--on);
-  background: var(--thumb);
-  box-shadow: 0 2px 8px rgba(0,0,0,.12);
-}
+.seg button.on { color: var(--on) }
 
 /* ── CHROME (FAB & DOCK) ── */
+/* Bottom chrome: exactly matches reference position + sizing */
 .chrome {
   position: fixed; z-index: 10;
   left: 50%; transform: translateX(-50%);
@@ -611,7 +616,7 @@ textarea.input-field {
 }
 .chrome > * { pointer-events: auto }
 
-/* FAB */
+/* FAB — glass surface #2 */
 .fab {
   display: grid; place-items: center;
   width: 58px; height: 58px;
@@ -623,12 +628,14 @@ textarea.input-field {
   -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid rgba(255,255,255,.35);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 12px 26px color-mix(in srgb, var(--primary) 45%, transparent);
-  transition: transform .55s var(--spring), border-radius .7s var(--bounce);
+  transition: transform .55s var(--spring), border-radius .7s var(--bounce), translate .6s var(--spring);
 }
+.fab:hover { border-radius: 29px }
 .fab:active { transform: scale(.92); transition-duration: .15s }
-.fab svg { width: 26px; height: 26px; stroke-width: 2.2 }
+.fab svg { width: 26px; height: 26px; stroke-width: 2 }
 
-/* DOCK */
+/* DOCK — glass surface #1 */
+/* Reference height 72px; radius 36px; on scroll: height 54px + scale(.9) */
 .dock {
   height: 72px; border-radius: 36px;
   display: flex; padding: 8px;
@@ -636,6 +643,7 @@ textarea.input-field {
   transform-origin: 50% 100%;
   position: relative;
 }
+/* Tab item */
 .tab {
   position: relative; z-index: 1;
   flex: 1; border-radius: 28px;
@@ -643,10 +651,13 @@ textarea.input-field {
   gap: 2px; font-size: 11px; font-weight: 600;
   color: var(--muted); transition: color .3s;
 }
+.tab span { transition: opacity .3s, font-size .4s var(--spring), height .4s var(--spring); height: 14px }
 .tab.on { color: var(--primary) }
 .tab svg { width: 22px; height: 22px }
 
-/* LENS */
+/* LENS — sliding highlight inside dock */
+/* Width = (dock - 2×8px padding) / 3 tabs */
+/* Position = translateX(tab-index × 100%) */
 .lens {
   position: absolute; top: 8px; bottom: 8px; left: 8px;
   width: calc((100% - 16px) / 3);
@@ -655,31 +666,43 @@ textarea.input-field {
   border: 1px solid var(--edge);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 4px 14px var(--sh);
   transform: translateX(calc(var(--tab-idx, 0) * 100%));
-  transition: transform .55s var(--spring);
+  transition: transform .65s var(--spring), background .3s;
+  pointer-events: none;
+}
+/* Lift state during drag */
+.dock.lift .lens {
+  transform: translateX(calc(var(--tab-idx, 0) * 100%)) scale(1.14, 1.1);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  backdrop-filter: blur(3px) saturate(240%);
+  -webkit-backdrop-filter: blur(3px) saturate(240%);
 }
 
-/* ── SCRIM & BOTTOM SHEET ── */
+/* ── SCRIM ── */
+/* Matches reference: rgba(0,0,0,.34), opacity transition via --sheet curve */
 .scrim {
   position: fixed; inset: 0; z-index: 20;
-  background: rgba(0,0,0,.4);
+  background: rgba(0,0,0,.34);
   opacity: 0; pointer-events: none;
   transition: opacity .5s var(--sheet);
 }
 .scrim.open { opacity: 1; pointer-events: auto }
 
+/* ── BOTTOM SHEET — glass surface #3 ── */
+/* Reference: radius 34px 34px 0 0; glass2 bg; iOS-style drag anywhere on header */
 .sheet {
   position: fixed; z-index: 21;
   left: 50%; bottom: 0;
   width: min(520px, 100%);
   max-height: 88vh;
   border-radius: 34px 34px 0 0;
-  padding: 0 18px calc(24px + env(safe-area-inset-bottom, 0px));
+  padding: 0 16px calc(22px + env(safe-area-inset-bottom, 0px));
   background: var(--glass2);
   visibility: hidden;
-  transform: translate(-50%, 105%);
-  transition: transform .55s var(--sheet), visibility 0s .55s;
+  transform: translate(-50%, 104%);
+  transition: transform .6s var(--sheet), visibility 0s .6s;
   overflow-y: auto;
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 .sheet.open {
   visibility: visible;
@@ -687,18 +710,20 @@ textarea.input-field {
   transition-delay: 0s;
 }
 
+/* Sheet drag handle */
 .sheet-handle-zone {
-  height: 32px; display: grid; place-items: center;
+  height: 30px; display: grid; place-items: center;
   cursor: grab; touch-action: none;
 }
 .sheet-handle {
   width: 40px; height: 5px; border-radius: 3px;
-  background: color-mix(in srgb, var(--on) 25%, transparent);
+  background: color-mix(in srgb, var(--on) 28%, transparent);
 }
 
+/* Sheet title — compact, not demo-scale */
 .sheet-title {
-  font-size: 22px; font-weight: 800; letter-spacing: -.03em;
-  margin: 0 0 16px;
+  font-size: 24px; font-weight: 800; letter-spacing: -.03em;
+  margin: 2px 4px 14px;
 }
 
 /* ── AI PREVIEW LIST ── */
@@ -723,14 +748,18 @@ textarea.input-field {
 /* ── UNDO TOAST SNACKBAR ── */
 .undo-toast {
   position: fixed; z-index: 15;
-  left: 50%; transform: translateX(-50%);
+  left: 50%; transform: translateX(-50%) translateY(0);
   bottom: calc(100px + env(safe-area-inset-bottom, 0px));
   width: min(380px, calc(100% - 32px));
   padding: 12px 16px; border-radius: var(--r3);
   display: flex; align-items: center; justify-content: space-between;
   background: var(--on); color: var(--bg);
-  box-shadow: 0 10px 30px rgba(0,0,0,.25);
-  animation: slideUp .4s var(--spring);
+  box-shadow: var(--e3);
+  animation: slideUp .4s var(--spring) both;
+}
+@keyframes slideUp {
+  from { transform: translateX(-50%) translateY(20px); opacity: 0 }
+  to   { transform: translateX(-50%) translateY(0);    opacity: 1 }
 }
 .undo-toast-btn {
   font-weight: 700; color: var(--primary);
@@ -756,10 +785,24 @@ textarea.input-field {
 }
 @keyframes spin { to { transform: rotate(360deg) } }
 
+/* ── SECTION HEADERS ── */
+.screen-title {
+  font-size: 26px; font-weight: 800; letter-spacing: -.03em;
+  margin: 16px 4px 18px;
+}
+
 /* ── REDUCED MOTION ── */
+/* Full stop — no springs, no blobs, no spinners */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     transition: none !important;
     animation: none !important;
   }
+}
+
+/* ── TABLET / DESKTOP ── */
+/* Wider layout when > 600px (Telegram desktop Web) */
+@media (min-width: 600px) {
+  .wrap { padding: 0 24px 220px }
+  .chrome { width: min(460px, calc(100% - 24px)) }
 }
