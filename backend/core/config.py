@@ -35,8 +35,8 @@ class Settings(BaseSettings):
     AI_MODEL: str = "gemini-2.5-flash"
     AI_RATE_LIMIT_PER_MINUTE: int = 30
 
-    # CORS
-    ALLOWED_ORIGINS: list[str] = [
+    # CORS (Use str | list[str] so pydantic-settings doesn't treat it as complex json)
+    ALLOWED_ORIGINS: str | list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:3000",
@@ -61,16 +61,27 @@ class Settings(BaseSettings):
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v: Any) -> list[str]:
+        default_prod = [
+            "https://mating.vercel.app",
+            "https://web.telegram.org",
+            "https://*.telegram.org",
+        ]
+        if not v:
+            return default_prod
         if isinstance(v, str):
-            if v.startswith("[") and v.endswith("]"):
+            v_clean = v.strip()
+            if not v_clean:
+                return default_prod
+            if v_clean.startswith("[") and v_clean.endswith("]"):
                 try:
-                    return json.loads(v)
+                    return json.loads(v_clean)
                 except Exception:
                     pass
-            return [i.strip() for i in v.split(",") if i.strip()]
+            origins = [i.strip() for i in v_clean.split(",") if i.strip()]
+            return origins or default_prod
         elif isinstance(v, (list, tuple)):
             return [str(i).strip() for i in v]
-        return ["*"] if cls().APP_ENV == "development" else []
+        return default_prod
 
     @property
     def primary_ai_key(self) -> str:
