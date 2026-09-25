@@ -8,7 +8,14 @@ import { ShoppingItem } from "../types";
 
 export const ListScreen: React.FC = () => {
   const queryClient = useQueryClient();
-  const { language, showUndoToast } = useAppStore();
+  const {
+    language,
+    showUndoToast,
+    openSheet,
+    showPurchased,
+    confirmDelete,
+    hapticsEnabled,
+  } = useAppStore();
   const t = translations[language];
 
   const [purchasedOpen, setPurchasedOpen] = useState(true);
@@ -24,13 +31,13 @@ export const ListScreen: React.FC = () => {
     queryFn: () => api.getItems(),
   });
 
-  // Fetch monthly stats for summary chip
+  // Fetch monthly stats for summary strip
   const { data: stats } = useQuery({
     queryKey: ["stats"],
     queryFn: () => api.getMonthlyStats(),
   });
 
-  // Toggle purchased mutation
+  // Toggle purchased mutation with optimistic update
   const toggleMutation = useMutation({
     mutationFn: async ({ id, version }: { id: string; version: number }) => {
       return api.togglePurchased(id, version);
@@ -50,26 +57,42 @@ export const ListScreen: React.FC = () => {
     },
     onError: (err, _, context) => {
       if (err instanceof ConflictError) {
-        // Refetch to reconcile version
         queryClient.invalidateQueries({ queryKey: ["items"] });
       } else if (context?.previousItems) {
         queryClient.setQueryData(["items"], context.previousItems);
       }
-      triggerHaptic("error");
+      if (hapticsEnabled) triggerHaptic("error");
     },
     onSuccess: () => {
-      triggerHaptic("selection");
+      if (hapticsEnabled) triggerHaptic("selection");
       queryClient.invalidateQueries({ queryKey: ["stats"] });
     },
   });
 
-  // Delete mutation (soft delete)
+  // Delete mutation with optimistic update & undo toast
   const deleteMutation = useMutation({
     mutationFn: async (item: ShoppingItem) => {
       return api.deleteItem(item.id);
     },
+    onMutate: async (item) => {
+      await queryClient.cancelQueries({ queryKey: ["items"] });
+      const previousItems = queryClient.getQueryData<ShoppingItem[]>(["items"]);
+
+      queryClient.setQueryData<ShoppingItem[]>(["items"], (old) => {
+        if (!old) return [];
+        return old.filter((it) => it.id !== item.id);
+      });
+
+      return { previousItems };
+    },
+    onError: (_, __, context) => {
+      if (context?.previousItems) {
+        queryClient.setQueryData(["items"], context.previousItems);
+      }
+      if (hapticsEnabled) triggerHaptic("error");
+    },
     onSuccess: (_, item) => {
-      triggerHaptic("medium");
+      if (hapticsEnabled) triggerHaptic("medium");
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["stats"] });
       showUndoToast(item.id, item.name);
@@ -82,14 +105,24 @@ export const ListScreen: React.FC = () => {
       return api.clearPurchased();
     },
     onSuccess: () => {
-      triggerHaptic("heavy");
+      if (hapticsEnabled) triggerHaptic("heavy");
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["stats"] });
     },
   });
 
-  // Separate active and purchased
-  const { purchasedItems, groupedActive } = useMemo(() => {
+  const handleDeleteClick = (item: ShoppingItem) => {
+    if (confirmDelete) {
+      if (window.confirm(`Удалить "${item.name}"?`)) {
+        deleteMutation.mutate(item);
+      }
+    } else {
+      deleteMutation.mutate(item);
+    }
+  };
+
+  // Group active and separate purchased
+  const { activeItems, purchasedItems, groupedActive } = useMemo(() => {
     const active = items.filter((i) => !i.is_purchased);
     const purchased = items.filter((i) => i.is_purchased);
 
@@ -100,10 +133,10 @@ export const ListScreen: React.FC = () => {
       grouped[cat].push(item);
     }
 
-    return { purchasedItems: purchased, groupedActive: grouped };
+    return { activeItems: active, purchasedItems: purchased, groupedActive: grouped };
   }, [items]);
 
-  const totalCount = items.length;
+  const activeCount = activeItems.length;
   const boughtCount = purchasedItems.length;
 
   return (
@@ -112,36 +145,50 @@ export const ListScreen: React.FC = () => {
       <div className="greeting">
         <h1>{t.greetingTitle}</h1>
         <p>{t.greetingSubtitle}</p>
-
-        {/* Real Summary Chips */}
-        <div className="summary-chips">
-          {stats && (
-            <div className="summary-chip accent">
-              <svg viewBox="0 0 24 24" style={{ width: 16, height: 16 }}>
-                <circle cx="12" cy="12" r="10" />
-                <polyline points="12 6 12 12 16 14" />
-              </svg>
-              <span>
-                {t.monthlySpent}: {formatCurrency(stats.total_spent, stats.currency_code, language)}
-              </span>
-            </div>
-          )}
-
-          <div className="summary-chip">
-            <svg viewBox="0 0 24 24" style={{ width: 16, height: 16 }}>
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-              <polyline points="22 4 12 14.01 9 11.01" />
-            </svg>
-            <span>
-              {t.purchasedSummary
-                .replace("{bought}", boughtCount.toString())
-                .replace("{total}", totalCount.toString())}
-            </span>
-          </div>
-        </div>
       </div>
 
-      {isLoading && <div className="spinner" />}
+      {/* Summary Strip (Screenshot 1 & 2 High-Density Architecture) */}
+      <div className="summary-strip">
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <span className="summary-stat-val">
+            {activeCount}
+          </span>
+          <span className="summary-stat-lbl">
+            {t.summaryActive.replace("{count}", "").trim()}
+          </span>
+        </div>
+
+        <div style={{ width: 1, height: 28, background: "var(--outline)" }} />
+
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <span className="summary-stat-val" style={{ color: "var(--success, #34c759)" }}>
+            {boughtCount}
+          </span>
+          <span className="summary-stat-lbl">
+            {t.summaryPurchased.replace("{count}", "").trim()}
+          </span>
+        </div>
+
+        {stats && stats.total_spent > 0 && (
+          <>
+            <div style={{ width: 1, height: 28, background: "var(--outline)" }} />
+            <div style={{ display: "flex", flexDirection: "column", textAlign: "right" }}>
+              <span className="summary-stat-val" style={{ color: "var(--primary)" }}>
+                {formatCurrency(stats.total_spent, stats.currency_code, language)}
+              </span>
+              <span className="summary-stat-lbl">
+                {t.monthlySpent}
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+
+      {isLoading && (
+        <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
+          <div className="spinner" />
+        </div>
+      )}
 
       {isError && (
         <div className="empty-state">
@@ -155,13 +202,21 @@ export const ListScreen: React.FC = () => {
 
       {!isLoading && items.length === 0 && (
         <div className="empty-state">
-          <svg viewBox="0 0 24 24">
+          <svg viewBox="0 0 24 24" style={{ width: 56, height: 56, opacity: 0.4 }}>
             <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
             <line x1="3" y1="6" x2="21" y2="6" />
             <path d="M16 10a4 4 0 0 1-8 0" />
           </svg>
           <h3>{t.emptyTitle}</h3>
-          <p>{t.emptySubtitle}</p>
+          <p style={{ maxWidth: 280, margin: "6px auto 16px" }}>{t.emptySubtitle}</p>
+          <button
+            type="button"
+            className="btn btn-p press"
+            style={{ width: "auto", minWidth: 160, padding: "12px 24px" }}
+            onClick={() => openSheet("quick")}
+          >
+            {t.emptyAddBtn || "Добавить товар"}
+          </button>
         </div>
       )}
 
@@ -215,7 +270,7 @@ export const ListScreen: React.FC = () => {
                     className="item-action-btn del"
                     onClick={(e) => {
                       e.stopPropagation();
-                      deleteMutation.mutate(item);
+                      handleDeleteClick(item);
                     }}
                     aria-label={t.delete}
                     title={t.delete}
@@ -232,13 +287,16 @@ export const ListScreen: React.FC = () => {
         </section>
       ))}
 
-      {/* Purchased Items Section */}
-      {purchasedItems.length > 0 && (
+      {/* Purchased Items Section (respects showPurchased setting) */}
+      {showPurchased && purchasedItems.length > 0 && (
         <section className="purchased-section">
           <div className="purchased-header">
             <div
               className={`purchased-toggle ${purchasedOpen ? "open" : ""}`}
-              onClick={() => setPurchasedOpen(!purchasedOpen)}
+              onClick={() => {
+                if (hapticsEnabled) triggerHaptic("light");
+                setPurchasedOpen(!purchasedOpen);
+              }}
             >
               <svg viewBox="0 0 24 24">
                 <polyline points="9 18 15 12 9 6" />
@@ -293,7 +351,7 @@ export const ListScreen: React.FC = () => {
                   <div className="item-actions">
                     <button
                       className="item-action-btn del"
-                      onClick={() => deleteMutation.mutate(item)}
+                      onClick={() => handleDeleteClick(item)}
                       aria-label={t.delete}
                     >
                       <svg viewBox="0 0 24 24" style={{ width: 18, height: 18 }}>

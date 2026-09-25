@@ -25,8 +25,21 @@ export const App: React.FC = () => {
     // 1. Telegram Mini App environment
     initTelegramApp();
 
-    // 2. Apply persisted theme without flash (already set as data-theme attr from store init)
-    //    If theme is "auto" we remove the attribute so OS preference governs
+    // 2. Hardware Capability Detection (60 FPS on low-end, full shaders on high-end)
+    const cores = navigator.hardwareConcurrency || 4;
+    const memory = (navigator as unknown as { deviceMemory?: number }).deviceMemory || 4;
+    const saveData = (navigator as unknown as { connection?: { saveData?: boolean } }).connection?.saveData || false;
+
+    document.documentElement.classList.remove("perf-minimal", "perf-reduced", "perf-full");
+    if (cores <= 2 || memory <= 2 || saveData) {
+      document.documentElement.classList.add("perf-minimal");
+    } else if (cores <= 4 || memory <= 4) {
+      document.documentElement.classList.add("perf-reduced");
+    } else {
+      document.documentElement.classList.add("perf-full");
+    }
+
+    // 3. Apply persisted theme without flash
     const stored = localStorage.getItem("mating_theme");
     if (stored && stored !== "auto") {
       document.documentElement.setAttribute("data-theme", stored);
@@ -38,28 +51,34 @@ export const App: React.FC = () => {
       }
     }
 
-    // 3. Enable Chromium refraction enhancement
+    // 4. Enable Chromium refraction enhancement (only on capable devices)
     const isChromium = /Chrom(e|ium)\//.test(navigator.userAgent) && !/Firefox/.test(navigator.userAgent);
-    if (isChromium) document.documentElement.classList.add("refract");
+    if (isChromium && cores > 2 && memory > 2) {
+      document.documentElement.classList.add("refract");
+    }
 
-    // 4. Pointer tracking for glass specular (--ang) and hover glow (--mx, --my)
-    //    Runs as a passive listener — zero layout thrash
-    const handlePointerMove = (e: PointerEvent) => {
-      const ang = 135 + (e.clientX / innerWidth - 0.5) * 70 + (e.clientY / innerHeight - 0.5) * 40;
-      document.documentElement.style.setProperty("--ang", `${ang}deg`);
+    // 5. Pointer tracking for glass specular (--ang) and hover glow (--mx, --my)
+    //    CRITICAL: Only attach on devices with a fine pointer (mouse/trackpad).
+    //    Touch screens should never run pointer tracking to preserve 60 FPS mobile scrolls.
+    let cleanupPointer: (() => void) | undefined;
+    if (window.matchMedia("(pointer: fine)").matches) {
+      const handlePointerMove = (e: PointerEvent) => {
+        const ang = 135 + (e.clientX / innerWidth - 0.5) * 70 + (e.clientY / innerHeight - 0.5) * 40;
+        document.documentElement.style.setProperty("--ang", `${ang}deg`);
 
-      // Update hover glow origin on whichever glass surface the pointer is over
-      const glassEl = (e.target as Element)?.closest?.(".glass") as HTMLElement | null;
-      if (glassEl) {
-        const r = glassEl.getBoundingClientRect();
-        glassEl.style.setProperty("--mx", `${e.clientX - r.left}px`);
-        glassEl.style.setProperty("--my", `${e.clientY - r.top}px`);
-      }
-    };
-    document.addEventListener("pointermove", handlePointerMove, { passive: true });
+        const glassEl = (e.target as Element)?.closest?.(".glass") as HTMLElement | null;
+        if (glassEl) {
+          const r = glassEl.getBoundingClientRect();
+          glassEl.style.setProperty("--mx", `${e.clientX - r.left}px`);
+          glassEl.style.setProperty("--my", `${e.clientY - r.top}px`);
+        }
+      };
+      document.addEventListener("pointermove", handlePointerMove, { passive: true });
+      cleanupPointer = () => document.removeEventListener("pointermove", handlePointerMove);
+    }
 
     return () => {
-      document.removeEventListener("pointermove", handlePointerMove);
+      if (cleanupPointer) cleanupPointer();
     };
   }, []);
 

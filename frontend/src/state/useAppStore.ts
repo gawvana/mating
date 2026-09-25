@@ -21,6 +21,25 @@ interface AppState {
   language: Language;
   setLanguage: (lang: Language) => void;
 
+  // UX & Behavioral settings
+  compactMode: boolean;
+  setCompactMode: (enabled: boolean) => void;
+
+  reducedMotion: boolean;
+  setReducedMotion: (enabled: boolean) => void;
+
+  hapticsEnabled: boolean;
+  setHapticsEnabled: (enabled: boolean) => void;
+
+  showPurchased: boolean;
+  setShowPurchased: (enabled: boolean) => void;
+
+  confirmDelete: boolean;
+  setConfirmDelete: (enabled: boolean) => void;
+
+  autoCategory: boolean;
+  setAutoCategory: (enabled: boolean) => void;
+
   isSheetOpen: boolean;
   sheetMode: SheetMode;
   sheetInitialText: string;
@@ -38,13 +57,36 @@ interface AppState {
   setSyncing: (status: boolean) => void;
 }
 
-// ── Apply theme to DOM immediately (before first render) to prevent flash ──
-// This runs once at module load — only in browser, safe for SSR/TMA.
+// ── Initial Local Storage Readers ──
 const _storedTheme = (typeof localStorage !== "undefined"
   ? localStorage.getItem("mating_theme")
   : null) as ThemeMode | null;
 
 const _initTheme: ThemeMode = _storedTheme ?? "auto";
+
+const _initCompact = typeof localStorage !== "undefined"
+  ? localStorage.getItem("mating_compact") === "true"
+  : false;
+
+const _initMotion = typeof localStorage !== "undefined"
+  ? localStorage.getItem("mating_reduced_motion") === "true"
+  : false;
+
+const _initHaptics = typeof localStorage !== "undefined"
+  ? localStorage.getItem("mating_haptics") !== "false"
+  : true;
+
+const _initShowPurchased = typeof localStorage !== "undefined"
+  ? localStorage.getItem("mating_show_purchased") !== "false"
+  : true;
+
+const _initConfirmDelete = typeof localStorage !== "undefined"
+  ? localStorage.getItem("mating_confirm_delete") === "true"
+  : false;
+
+const _initAutoCat = typeof localStorage !== "undefined"
+  ? localStorage.getItem("mating_auto_cat") !== "false"
+  : true;
 
 // Apply immediately to <html> before React mounts
 if (typeof document !== "undefined") {
@@ -53,13 +95,15 @@ if (typeof document !== "undefined") {
   } else {
     document.documentElement.setAttribute("data-theme", _initTheme);
   }
+  if (_initCompact) document.documentElement.classList.add("compact");
+  if (_initMotion) document.documentElement.classList.add("reduced-motion");
 }
 
 const _initLanguage = (typeof localStorage !== "undefined"
   ? (localStorage.getItem("mating_lang") as Language | null)
   : null) ?? "ru";
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   activeTab: "list",
   setActiveTab: (tab) => {
     set({ activeTab: tab });
@@ -70,7 +114,6 @@ export const useAppStore = create<AppState>((set) => ({
     if (typeof localStorage !== "undefined") {
       localStorage.setItem("mating_theme", theme);
     }
-    // "auto" → remove attribute so OS preference governs
     if (theme === "auto") {
       document.documentElement.removeAttribute("data-theme");
     } else {
@@ -87,11 +130,69 @@ export const useAppStore = create<AppState>((set) => ({
     set({ language });
   },
 
+  compactMode: _initCompact,
+  setCompactMode: (enabled) => {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("mating_compact", String(enabled));
+    }
+    if (enabled) {
+      document.documentElement.classList.add("compact");
+    } else {
+      document.documentElement.classList.remove("compact");
+    }
+    set({ compactMode: enabled });
+  },
+
+  reducedMotion: _initMotion,
+  setReducedMotion: (enabled) => {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("mating_reduced_motion", String(enabled));
+    }
+    if (enabled) {
+      document.documentElement.classList.add("reduced-motion");
+    } else {
+      document.documentElement.classList.remove("reduced-motion");
+    }
+    set({ reducedMotion: enabled });
+  },
+
+  hapticsEnabled: _initHaptics,
+  setHapticsEnabled: (enabled) => {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("mating_haptics", String(enabled));
+    }
+    set({ hapticsEnabled: enabled });
+  },
+
+  showPurchased: _initShowPurchased,
+  setShowPurchased: (enabled) => {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("mating_show_purchased", String(enabled));
+    }
+    set({ showPurchased: enabled });
+  },
+
+  confirmDelete: _initConfirmDelete,
+  setConfirmDelete: (enabled) => {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("mating_confirm_delete", String(enabled));
+    }
+    set({ confirmDelete: enabled });
+  },
+
+  autoCategory: _initAutoCat,
+  setAutoCategory: (enabled) => {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("mating_auto_cat", String(enabled));
+    }
+    set({ autoCategory: enabled });
+  },
+
   isSheetOpen: false,
   sheetMode: "quick",
   sheetInitialText: "",
   openSheet: (mode = "quick", initialText = "") => {
-    triggerHaptic("medium");
+    if (get().hapticsEnabled) triggerHaptic("medium");
     document.body.classList.add("open");
     set({ isSheetOpen: true, sheetMode: mode, sheetInitialText: initialText });
   },

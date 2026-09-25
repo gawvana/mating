@@ -6,7 +6,8 @@ import { useAppStore } from "../state/useAppStore";
 import { triggerHaptic } from "../telegram/telegram";
 import { AIParsedItem } from "../types";
 
-const UNITS = ["шт", "кг", "л", "г", "уп", "бут", "пач"];
+const UNITS = ["шт", "кг", "л", "уп", "г"];
+
 const CATEGORIES = [
   "Молочные продукты",
   "Овощи и фрукты",
@@ -19,9 +20,29 @@ const CATEGORIES = [
   "Другое",
 ];
 
+const CATEGORY_KEYWORDS: Record<string, string[]> = {
+  "Молочные продукты": ["молок", "сыр", "творог", "масло сливоч", "кефир", "сливк", "йогурт", "ряженк", "сметан", "milk", "cheese", "butter", "sut", "qatiq"],
+  "Овощи и фрукты": ["яблок", "банан", "огур", "помидор", "томат", "картоф", "морков", "лук", "чеснок", "зелен", "капуст", "салат", "апельсин", "лимон", "ягод", "клубник", "виноград", "перец", "груш", "fruit", "apple", "banana", "olma", "bodring", "pomidor"],
+  "Мясо и рыба": ["мяс", "говядин", "свинин", "куриц", "курин", "птиц", "филе", "рыб", "фарш", "колбас", "сосиск", "лосос", "семг", "кревет", "meat", "chicken", "beef", "fish", "go'sht", "baliq"],
+  "Бакалея": ["рис", "гречк", "макарон", "паст", "мук", "сахар", "соль", "хлопь", "круп", "масло раст", "овсянк", "консерв", "горох", "фасол", "чечевиц", "rice", "pasta", "flour", "guruch"],
+  "Хлеб и выпечка": ["хлеб", "батон", "булоч", "лаваш", "круассан", "буханк", "багет", "лепешк", "тост", "bread", "non"],
+  "Напитки": ["сок", "вод", "кола", "чай", "кофе", "пиво", "вино", "лимонад", "минералк", "water", "juice", "tea", "coffee", "suv", "choy"],
+  "Сладости": ["шоколад", "конфет", "печень", "торт", "пирож", "мармелад", "морожен", "вафл", "пряник", "sweets", "candy", "cake", "shirinlik"],
+  "Хозтовары": ["мыл", "шампун", "паста зуб", "порошок", "салфет", "бумага", "губк", "пакет", "средство", "щетк", "soap"],
+};
+
 export const AddSheet: React.FC = () => {
   const queryClient = useQueryClient();
-  const { isSheetOpen, closeSheet, sheetMode, setSheetMode, language } = useAppStore();
+  const {
+    isSheetOpen,
+    closeSheet,
+    sheetMode,
+    setSheetMode,
+    sheetInitialText,
+    language,
+    hapticsEnabled,
+    autoCategory,
+  } = useAppStore();
   const t = translations[language];
 
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -53,7 +74,6 @@ export const AddSheet: React.FC = () => {
         closeSheet();
         return;
       }
-      // Focus trap inside sheet
       if (e.key === "Tab" && sheetRef.current) {
         const focusable = Array.from(
           sheetRef.current.querySelectorAll<HTMLElement>(
@@ -76,20 +96,17 @@ export const AddSheet: React.FC = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isSheetOpen, closeSheet]);
 
-  // Manage #app / dock inert when sheet opens — keeps screen reader focus inside sheet
+  // Manage #app / dock inert when sheet opens
   useEffect(() => {
     const appEl = document.getElementById("app");
     const dockEl = document.getElementById("dock");
     if (isSheetOpen) {
       appEl?.setAttribute("inert", "");
       dockEl?.setAttribute("inert", "");
-      // Focus first focusable in sheet after open transition
       const timer = setTimeout(() => {
-        const first = sheetRef.current?.querySelector<HTMLElement>(
-          "button, input, select, textarea"
-        );
-        first?.focus();
-      }, 50);
+        const inputEl = sheetRef.current?.querySelector<HTMLInputElement>("input[type='text'], textarea");
+        inputEl?.focus();
+      }, 60);
       return () => clearTimeout(timer);
     } else {
       appEl?.removeAttribute("inert");
@@ -101,20 +118,30 @@ export const AddSheet: React.FC = () => {
   // Reset form when sheet opens
   useEffect(() => {
     if (isSheetOpen) {
-      setName("");
+      setName(sheetInitialText || "");
       setQuantity("1");
       setUnit("шт");
       setCategory("Другое");
       setPrice("");
-      setAiText("");
+      setAiText(sheetMode === "ai" ? sheetInitialText : "");
       setParsedItems([]);
       setSelectedIndices(new Set());
       setParseError(null);
-    }
-  }, [isSheetOpen]);
 
-  // ── Drag-to-dismiss (velocity-aware, zero React re-renders during drag) ──
-  // Mirrors reference implementation: velocity = dy / dt; dismiss if dy>110 OR v>0.6
+      // Auto-categorize initial text if provided
+      if (autoCategory && sheetInitialText && sheetInitialText.length >= 3) {
+        const lower = sheetInitialText.toLowerCase();
+        for (const [cat, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+          if (keywords.some((kw) => lower.includes(kw))) {
+            setCategory(cat);
+            break;
+          }
+        }
+      }
+    }
+  }, [isSheetOpen, sheetInitialText, sheetMode, autoCategory]);
+
+  // ── Drag-to-dismiss ────────────────────────────────────────────────────────
   const handlePointerDown = (e: React.PointerEvent) => {
     if (!sheetRef.current) return;
     dragStartY.current = e.clientY;
@@ -127,9 +154,8 @@ export const AddSheet: React.FC = () => {
   const handlePointerMove = (e: React.PointerEvent) => {
     if (dragStartY.current === null || !sheetRef.current) return;
     const dy = e.clientY - dragStartY.current;
-    if (dy <= 0) return; // Never drag upward
+    if (dy <= 0) return;
     currentDragY.current = dy;
-    // Mirror reference: upward drag is dampened by 0.12, downward is 1:1
     sheetRef.current.style.transform = `translate(-50%, ${dy}px)`;
   };
 
@@ -142,7 +168,6 @@ export const AddSheet: React.FC = () => {
     }
     const dy = currentDragY.current;
     const dt = Math.max(1, e.timeStamp - dragStartTime.current);
-    // velocity in px/ms — matches reference threshold v > 0.6
     const velocity = dy / dt;
 
     dragStartY.current = null;
@@ -152,7 +177,37 @@ export const AddSheet: React.FC = () => {
     if (dy > 110 || velocity > 0.6) {
       closeSheet();
     }
-    // else: CSS transition snaps back to translate(-50%, 0) via .sheet.open rule
+  };
+
+  // ── Stepper Handlers ───────────────────────────────────────────────────────
+  const handleMinus = () => {
+    if (hapticsEnabled) triggerHaptic("light");
+    const val = parseFloat(quantity) || 1;
+    const step = val > 1 && Number.isInteger(val) ? 1 : 0.5;
+    const next = Math.max(0.1, Math.round((val - step) * 10) / 10);
+    setQuantity(String(next));
+  };
+
+  const handlePlus = () => {
+    if (hapticsEnabled) triggerHaptic("light");
+    const val = parseFloat(quantity) || 0;
+    const step = Number.isInteger(val) ? 1 : 0.5;
+    const next = Math.round((val + step) * 10) / 10;
+    setQuantity(String(next));
+  };
+
+  // ── Name Change with Auto-Category ─────────────────────────────────────────
+  const handleNameChange = (val: string) => {
+    setName(val);
+    if (autoCategory && val.trim().length >= 3) {
+      const lower = val.toLowerCase();
+      for (const [cat, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+        if (keywords.some((kw) => lower.includes(kw))) {
+          setCategory(cat);
+          break;
+        }
+      }
+    }
   };
 
   // ── Mutations ─────────────────────────────────────────────────────────────
@@ -163,10 +218,10 @@ export const AddSheet: React.FC = () => {
         quantity: parseFloat(quantity) || 1.0,
         unit: unit.trim() || "шт",
         category: category || "Другое",
-        price: price ? parseFloat(price) : null,
+        price: price.trim() ? parseFloat(price) : null,
       }),
     onSuccess: () => {
-      triggerHaptic("success");
+      if (hapticsEnabled) triggerHaptic("success");
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["stats"] });
       closeSheet();
@@ -176,14 +231,14 @@ export const AddSheet: React.FC = () => {
   const parseMutation = useMutation({
     mutationFn: async (text: string) => api.parseAI(text),
     onSuccess: (data) => {
-      triggerHaptic("medium");
+      if (hapticsEnabled) triggerHaptic("medium");
       setParseError(null);
       setParsedItems(data.items);
       setSelectedIndices(new Set(data.items.map((_, idx) => idx)));
     },
     onError: () => {
-      triggerHaptic("error");
-      setParseError(t.aiError ?? "Ошибка парсинга. Попробуйте ещё раз.");
+      if (hapticsEnabled) triggerHaptic("error");
+      setParseError(t.aiError ?? "Ошибка разбора. Попробуйте ещё раз.");
     },
   });
 
@@ -202,7 +257,7 @@ export const AddSheet: React.FC = () => {
       );
     },
     onSuccess: () => {
-      triggerHaptic("success");
+      if (hapticsEnabled) triggerHaptic("success");
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["stats"] });
       closeSheet();
@@ -210,10 +265,23 @@ export const AddSheet: React.FC = () => {
   });
 
   const toggleItemSelection = (index: number) => {
-    triggerHaptic("selection");
+    if (hapticsEnabled) triggerHaptic("selection");
     setSelectedIndices((prev) => {
       const next = new Set(prev);
       next.has(index) ? next.delete(index) : next.add(index);
+      return next;
+    });
+  };
+
+  const removeParsedItem = (index: number) => {
+    if (hapticsEnabled) triggerHaptic("light");
+    setParsedItems((prev) => prev.filter((_, i) => i !== index));
+    setSelectedIndices((prev) => {
+      const next = new Set<number>();
+      prev.forEach((i) => {
+        if (i < index) next.add(i);
+        else if (i > index) next.add(i - 1);
+      });
       return next;
     });
   };
@@ -246,7 +314,7 @@ export const AddSheet: React.FC = () => {
         aria-modal="true"
         aria-label={t.addTitle}
       >
-        {/* Drag handle — pointer events only on this zone */}
+        {/* Drag handle */}
         <div
           className="sheet-handle-zone"
           onPointerDown={handlePointerDown}
@@ -259,24 +327,29 @@ export const AddSheet: React.FC = () => {
 
         <h3 className="sheet-title">{t.addTitle}</h3>
 
-        {/* Segmented control with spring-animated pill indicator */}
+        {/* Mode switch */}
         <div
           className="seg"
           style={{ "--seg-cols": 2, "--seg-idx": segIdx } as React.CSSProperties}
         >
-          {/* Pill indicator — CSS animates via --seg-idx */}
           <i aria-hidden="true" />
           <button
             type="button"
             className={sheetMode === "quick" ? "on" : ""}
-            onClick={() => { triggerHaptic("selection"); setSheetMode("quick"); }}
+            onClick={() => {
+              if (hapticsEnabled) triggerHaptic("selection");
+              setSheetMode("quick");
+            }}
           >
             {t.quickTab}
           </button>
           <button
             type="button"
             className={sheetMode === "ai" ? "on" : ""}
-            onClick={() => { triggerHaptic("selection"); setSheetMode("ai"); }}
+            onClick={() => {
+              if (hapticsEnabled) triggerHaptic("selection");
+              setSheetMode("ai");
+            }}
           >
             {t.aiTab}
           </button>
@@ -284,68 +357,124 @@ export const AddSheet: React.FC = () => {
 
         {sheetMode === "quick" ? (
           <form onSubmit={handleQuickSubmit}>
-            <div style={{ marginBottom: 12 }}>
+            {/* Product Name Input */}
+            <div style={{ marginBottom: 12, position: "relative" }}>
               <input
                 className="input-field"
                 type="text"
-                placeholder={t.itemNamePlaceholder}
+                placeholder={t.itemNamePlaceholder || "Название товара"}
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => handleNameChange(e.target.value)}
                 autoFocus
                 required
+                style={{ paddingRight: name ? 36 : 14 }}
               />
+              {name && (
+                <button
+                  type="button"
+                  onClick={() => setName("")}
+                  style={{
+                    position: "absolute",
+                    right: 10,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "none",
+                    border: "none",
+                    color: "var(--muted)",
+                    fontSize: 16,
+                    padding: 4,
+                    cursor: "pointer",
+                  }}
+                  aria-label="Очистить"
+                >
+                  ✕
+                </button>
+              )}
             </div>
 
-            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-              <div style={{ flex: 1 }}>
+            {/* Stepper + Canonical Unit Segmented Control */}
+            <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12 }}>
+              <div className="stepper" style={{ flexShrink: 0 }}>
+                <button
+                  type="button"
+                  className="stepper-btn"
+                  onClick={handleMinus}
+                  aria-label="Уменьшить"
+                >
+                  −
+                </button>
                 <input
-                  className="input-field"
                   type="number"
                   step="any"
                   min="0.1"
-                  placeholder={t.quantity}
+                  className="stepper-input"
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value)}
-                  required
+                  aria-label={t.quantity}
                 />
-              </div>
-              <div style={{ width: 100 }}>
-                <select
-                  className="input-field"
-                  value={unit}
-                  onChange={(e) => setUnit(e.target.value)}
+                <button
+                  type="button"
+                  className="stepper-btn"
+                  onClick={handlePlus}
+                  aria-label="Увеличить"
                 >
-                  {UNITS.map((u) => (
-                    <option key={u} value={u}>{u}</option>
-                  ))}
-                </select>
+                  +
+                </button>
+              </div>
+
+              <div className="unit-seg" style={{ flex: 1 }}>
+                {UNITS.map((u) => (
+                  <button
+                    key={u}
+                    type="button"
+                    className={`unit-btn ${unit === u ? "on" : ""}`}
+                    onClick={() => {
+                      if (hapticsEnabled) triggerHaptic("selection");
+                      setUnit(u);
+                    }}
+                  >
+                    {u}
+                  </button>
+                ))}
               </div>
             </div>
 
+            {/* Category Chips Row */}
             <div style={{ marginBottom: 12 }}>
-              <select
-                className="input-field"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-              >
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                {t.category}
+              </div>
+              <div className="chip-row">
                 {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>{c}</option>
+                  <button
+                    key={c}
+                    type="button"
+                    className={`chip ${category === c ? "on" : ""}`}
+                    onClick={() => {
+                      if (hapticsEnabled) triggerHaptic("selection");
+                      setCategory(c);
+                    }}
+                  >
+                    {c}
+                  </button>
                 ))}
-              </select>
+              </div>
             </div>
 
+            {/* Price (optional) */}
             <div style={{ marginBottom: 16 }}>
               <input
                 className="input-field"
                 type="number"
                 step="any"
                 min="0"
-                placeholder={t.price}
+                placeholder={t.pricePlaceholder || "Цена (необязательно)"}
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
               />
             </div>
 
+            {/* Primary Action Button */}
             <button
               type="submit"
               className="btn"
@@ -359,6 +488,7 @@ export const AddSheet: React.FC = () => {
             <form onSubmit={handleParseSubmit} style={{ marginBottom: 16 }}>
               <textarea
                 className="input-field"
+                rows={3}
                 placeholder={t.aiPlaceholder}
                 value={aiText}
                 onChange={(e) => setAiText(e.target.value)}
@@ -377,23 +507,43 @@ export const AddSheet: React.FC = () => {
               </div>
             </form>
 
-            {parseMutation.isPending && <div className="spinner" />}
+            {parseMutation.isPending && (
+              <div style={{ display: "flex", justifyContent: "center", padding: "20px 0" }}>
+                <div className="spinner" />
+              </div>
+            )}
 
-            {/* Error state with retry — no silent failures */}
+            {/* Error state with retry */}
             {parseError && !parseMutation.isPending && (
               <div
                 style={{
-                  background: "var(--err-c)", color: "var(--on-err-c)",
-                  borderRadius: "var(--r2)", padding: "12px 16px",
-                  marginBottom: 12, fontSize: 14,
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  background: "var(--err-c)",
+                  color: "var(--on-err-c)",
+                  borderRadius: "var(--r2)",
+                  padding: "12px 16px",
+                  marginBottom: 12,
+                  fontSize: 14,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
                 }}
               >
                 <span>{parseError}</span>
                 <button
                   type="button"
-                  style={{ fontWeight: 700, textDecoration: "underline", flexShrink: 0 }}
-                  onClick={() => { setParseError(null); parseMutation.mutate(aiText); }}
+                  style={{
+                    fontWeight: 700,
+                    textDecoration: "underline",
+                    flexShrink: 0,
+                    background: "none",
+                    border: "none",
+                    color: "inherit",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => {
+                    setParseError(null);
+                    parseMutation.mutate(aiText);
+                  }}
                 >
                   {t.retry ?? "Повторить"}
                 </button>
@@ -402,7 +552,7 @@ export const AddSheet: React.FC = () => {
 
             {parsedItems.length > 0 && (
               <div>
-                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8, color: "var(--on)" }}>
                   {t.previewTitle.replace("{count}", parsedItems.length.toString())}
                 </div>
 
@@ -413,11 +563,15 @@ export const AddSheet: React.FC = () => {
                       <div
                         key={idx}
                         className="ai-preview-item press"
-                        onClick={() => toggleItemSelection(idx)}
-                        role="checkbox"
-                        aria-checked={isSelected}
+                        style={{ display: "flex", alignItems: "center", gap: 10 }}
                       >
-                        <div className={`ai-preview-check ${isSelected ? "on" : ""}`}>
+                        <div
+                          className={`ai-preview-check ${isSelected ? "on" : ""}`}
+                          onClick={() => toggleItemSelection(idx)}
+                          role="checkbox"
+                          aria-checked={isSelected}
+                          style={{ cursor: "pointer" }}
+                        >
                           {isSelected && (
                             <svg viewBox="0 0 24 24" style={{ width: 14, height: 14 }}>
                               <polyline points="20 6 9 17 4 12" />
@@ -425,13 +579,35 @@ export const AddSheet: React.FC = () => {
                           )}
                         </div>
 
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 600, fontSize: 14 }}>{item.name}</div>
+                        <div
+                          style={{ flex: 1, minWidth: 0, cursor: "pointer" }}
+                          onClick={() => toggleItemSelection(idx)}
+                        >
+                          <div style={{ fontWeight: 600, fontSize: 14, color: "var(--on)" }}>{item.name}</div>
                           <div style={{ fontSize: 12, color: "var(--muted)" }}>
                             {item.quantity} {item.unit} • {item.category}
                             {item.estimated_price ? ` • ~${item.estimated_price.toLocaleString()}` : ""}
                           </div>
                         </div>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeParsedItem(idx);
+                          }}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "var(--muted)",
+                            fontSize: 16,
+                            padding: "4px 8px",
+                            cursor: "pointer",
+                          }}
+                          aria-label="Удалить позицию"
+                        >
+                          ✕
+                        </button>
                       </div>
                     );
                   })}
