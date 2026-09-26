@@ -853,7 +853,7 @@ export const AIScreen: React.FC = () => {
 
       {/* Direct Apply for Non-Item Intents (Sort, Filter, Share) */}
       {(detectedIntent === "sort" || detectedIntent === "filter" || detectedIntent === "share") && (
-        <div className="ai-preview-card glass" style={{ marginTop: 12, textAlign: "center", padding: "16px 20px" }}>
+        <div className="ai-screen-card glass" style={{ marginTop: 12, textAlign: "center", padding: "16px 20px" }}>
           <p style={{ margin: "0 0 12px", fontSize: 14 }}>{statusMessage}</p>
           <button className="ai-apply-btn" style={{ width: "auto", margin: "0 auto", padding: "0 28px" }} onClick={handleApply}>
             {language === "uz" ? "O'tish va qo'llash" : "Применить и открыть"}
@@ -863,7 +863,7 @@ export const AIScreen: React.FC = () => {
 
       {/* Interactive Preview Card before Apply */}
       {previewItems.length > 0 && (
-        <div className="ai-preview-card glass">
+        <div className="ai-screen-card glass">
           <div className="ai-preview-header">
             <div className="preview-badges">
               {detectedIntent === "add" && (
@@ -946,7 +946,7 @@ export const AIScreen: React.FC = () => {
 
       {/* Clear purchased direct confirm card */}
       {detectedIntent === "clear_purchased" && (
-        <div className="ai-clear-card glass">
+        <div className="ai-screen-card ai-clear-card glass">
           <p>Будет удалено все ранее купленное из текущего списка.</p>
           <button className="ai-danger-btn" onClick={handleApply}>
             Очистить купленные
