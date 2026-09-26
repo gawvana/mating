@@ -95,7 +95,7 @@ export const BottomDock: React.FC = () => {
     dockRectRef.current = null;
 
     const finalIdx = lastIndex.current;
-    if (hasDragged.current && finalIdx >= 0 && finalIdx < TABS.length) {
+    if (finalIdx >= 0 && finalIdx < TABS.length) {
       if (isSheetOpen) closeSheet();
       setActiveTab(TABS[finalIdx]);
     }

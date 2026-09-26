@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import secrets
 from typing import Annotated
 
 from aiogram.types import Update
@@ -32,8 +33,10 @@ async def telegram_webhook(
             detail={"error": {"code": "BOT_DISABLED", "message": "Bot token not configured"}},
         )
 
-    # Validate secret token header
-    if settings.WEBHOOK_SECRET and x_telegram_bot_api_secret_token != settings.WEBHOOK_SECRET:
+    # Validate secret token header using constant-time comparison
+    if settings.WEBHOOK_SECRET and not secrets.compare_digest(
+        x_telegram_bot_api_secret_token or "", settings.WEBHOOK_SECRET
+    ):
         logger.warning("Invalid webhook secret token received")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

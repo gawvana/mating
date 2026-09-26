@@ -106,6 +106,23 @@ export const AddSheet: React.FC = () => {
     }
   }, [name, autoCategory, editingItem]);
 
+  // Cancel any pending AI requests when sheet closes or unmounts
+  useEffect(() => {
+    if (!isSheetOpen && abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+  }, [isSheetOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
+  }, []);
+
   // Focus trap, Escape key, and inert management
   useEffect(() => {
     if (!isSheetOpen) return;
@@ -664,9 +681,19 @@ export const AddSheet: React.FC = () => {
                       <div
                         key={idx}
                         className={`ai-preview-card ${isSelected ? "selected" : ""}`}
+                        role="checkbox"
+                        tabIndex={0}
+                        aria-checked={isSelected}
+                        aria-label={`${item.name} (${item.quantity} ${item.unit})`}
                         onClick={() => toggleParsedItem(idx)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            toggleParsedItem(idx);
+                          }
+                        }}
                       >
-                        <div className={`item-check ${isSelected ? "checked" : ""}`}>
+                        <div className={`item-check ${isSelected ? "checked" : ""}`} aria-hidden="true">
                           {isSelected && (
                             <svg viewBox="0 0 24 24">
                               <path d="M20 6L9 17l-5-5" />
@@ -695,6 +722,7 @@ export const AddSheet: React.FC = () => {
                         <button
                           type="button"
                           className="item-del-btn"
+                          aria-label={`Удалить ${item.name}`}
                           onClick={(e) => {
                             e.stopPropagation();
                             removeParsedItem(idx);

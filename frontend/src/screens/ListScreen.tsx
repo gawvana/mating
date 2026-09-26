@@ -140,6 +140,7 @@ const ItemRow: React.FC<ItemRowProps> = React.memo(({
   const t = translations[language as keyof typeof translations] || translations.ru;
   const preliftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const popTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const purchaseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFired = useRef(false);
   const pressStartPos = useRef({ x: 0, y: 0 });
   const [pressStage, setPressStage] = useState<"idle" | "pressing" | "prelift">("idle");
@@ -156,6 +157,16 @@ const ItemRow: React.FC<ItemRowProps> = React.memo(({
     }
     setPressStage("idle");
   }, []);
+
+  useEffect(() => {
+    return () => {
+      cancelLongPress();
+      if (purchaseTimer.current) {
+        clearTimeout(purchaseTimer.current);
+        purchaseTimer.current = null;
+      }
+    };
+  }, [cancelLongPress]);
 
   const handlePointerDown = (e: React.PointerEvent) => {
     pressStartPos.current = { x: e.clientX, y: e.clientY };
@@ -188,7 +199,7 @@ const ItemRow: React.FC<ItemRowProps> = React.memo(({
     if (!longPressFired.current) {
       if (hapticsEnabled) triggerHaptic("selection");
       setIsPurchasing(true);
-      setTimeout(() => {
+      purchaseTimer.current = setTimeout(() => {
         setIsPurchasing(false);
         onToggle(item);
       }, 150);
@@ -224,8 +235,24 @@ const ItemRow: React.FC<ItemRowProps> = React.memo(({
         )}
       </button>
 
-      {/* Item details */}
-      <div className="item-body">
+      {/* Item details — accessible edit trigger on click/Enter */}
+      <div
+        className="item-body"
+        role="button"
+        tabIndex={0}
+        aria-label={`${item.name}, ${safeQty} ${item.unit || "шт"}, нажмите чтобы изменить`}
+        onClick={() => {
+          if (!longPressFired.current) {
+            onOpenCtx(item, window.innerWidth / 2, window.innerHeight / 2);
+          }
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onOpenCtx(item, window.innerWidth / 2, window.innerHeight / 2);
+          }
+        }}
+      >
         <div className="item-name">{item.name}</div>
         <div className="item-meta">
           <span>{safeQty} {item.unit || "шт"}</span>
@@ -546,10 +573,21 @@ export const ListScreen: React.FC = () => {
         <div className="purchased-group">
           <div className="purchased-header">
             <div
+              role="button"
+              tabIndex={0}
+              aria-expanded={purchasedOpen}
+              aria-label={`${(t.summaryPurchased || "{count} куплено").replace("{count}", "").trim()} (${filteredPurchased.length})`}
               style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}
               onClick={() => {
                 if (hapticsEnabled) triggerHaptic("selection");
                 setPurchasedOpen(!purchasedOpen);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  if (hapticsEnabled) triggerHaptic("selection");
+                  setPurchasedOpen(!purchasedOpen);
+                }
               }}
             >
               <span>

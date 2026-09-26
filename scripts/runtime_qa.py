@@ -7,13 +7,18 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
 import time
 import urllib.parse
 import uuid
 import httpx
 
-BOT_TOKEN = "8981651536:AAHHRbC8X300Cg3vUKk9SV4ZNKV_Ona8J74"
-PROD_BASE = "https://mating.vercel.app"
+BOT_TOKEN = (
+    os.getenv("TELEGRAM_BOT_TOKEN")
+    or os.getenv("BOT_TOKEN")
+    or "8981651536:AAHHRbC8X300Cg3vUKk9SV4ZNKV_Ona8J74"
+)
+PROD_BASE = os.getenv("PROD_BASE", "https://mating.vercel.app")
 API_BASE = f"{PROD_BASE}/api/v1"
 
 test_results = []

@@ -12,9 +12,13 @@ export const StatusPill: React.FC<StatusPillProps> = ({ isSyncing, isOffline, ha
   const [state, setState] = React.useState<PillState>("idle");
   const [visible, setVisible] = React.useState(false);
   const autoHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevSyncingRef = useRef(isSyncing);
 
   useEffect(() => {
     if (autoHideTimer.current) clearTimeout(autoHideTimer.current);
+
+    const wasSyncing = prevSyncingRef.current;
+    prevSyncingRef.current = isSyncing;
 
     let next: PillState = "idle";
     if (hasError) next = "error";
@@ -23,12 +27,12 @@ export const StatusPill: React.FC<StatusPillProps> = ({ isSyncing, isOffline, ha
     else next = "idle";
 
     // If transitioning from saving → nothing, briefly show "synced"
-    if (state === "saving" && next === "idle") {
+    if (wasSyncing && next === "idle") {
       setState("synced");
       setVisible(true);
       autoHideTimer.current = setTimeout(() => {
         setVisible(false);
-        setTimeout(() => setState("idle"), 350);
+        autoHideTimer.current = setTimeout(() => setState("idle"), 350);
       }, 2000);
       return;
     }
@@ -44,7 +48,6 @@ export const StatusPill: React.FC<StatusPillProps> = ({ isSyncing, isOffline, ha
     return () => {
       if (autoHideTimer.current) clearTimeout(autoHideTimer.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSyncing, isOffline, hasError]);
 
   const labels: Record<PillState, string> = {

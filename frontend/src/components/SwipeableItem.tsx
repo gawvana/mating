@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import { triggerHaptic } from "../telegram/telegram";
 import { ShoppingItem } from "../types";
 
@@ -44,6 +44,16 @@ export const SwipeableItem: React.FC<SwipeableItemProps> = React.memo(({
   const lastMoveTime = useRef(0);
   const lastMoveX = useRef(0);
   const moveVelocity = useRef(0);
+  const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (commitTimerRef.current) {
+        clearTimeout(commitTimerRef.current);
+        commitTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const resetPosition = useCallback((animate = true) => {
     const el = itemRef.current;
@@ -171,7 +181,7 @@ export const SwipeableItem: React.FC<SwipeableItemProps> = React.memo(({
         onSwipeLeft(item);
       }
 
-      setTimeout(() => {
+      commitTimerRef.current = setTimeout(() => {
         committed.current = false;
         resetPosition(true);
       }, 100);

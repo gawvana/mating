@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useShallow } from "zustand/react/shallow";
 import { api } from "../api/client";
 import { translations } from "../i18n";
 import {
@@ -58,7 +59,34 @@ export const SettingsScreen: React.FC = () => {
     updateAnimSetting,
     applyPreset,
     resetMotionProfile,
-  } = useAppStore();
+  } = useAppStore(
+    useShallow((state) => ({
+      language: state.language,
+      setLanguage: state.setLanguage,
+      currency: state.currency,
+      setCurrency: state.setCurrency,
+      theme: state.theme,
+      setTheme: state.setTheme,
+      compactMode: state.compactMode,
+      setCompactMode: state.setCompactMode,
+      reducedMotion: state.reducedMotion,
+      setReducedMotion: state.setReducedMotion,
+      hapticsEnabled: state.hapticsEnabled,
+      setHapticsEnabled: state.setHapticsEnabled,
+      showPurchased: state.showPurchased,
+      setShowPurchased: state.setShowPurchased,
+      confirmDelete: state.confirmDelete,
+      setConfirmDelete: state.setConfirmDelete,
+      autoCategory: state.autoCategory,
+      setAutoCategory: state.setAutoCategory,
+      isOffline: state.isOffline,
+      motionProfile: state.motionProfile,
+      updateMotionProfile: state.updateMotionProfile,
+      updateAnimSetting: state.updateAnimSetting,
+      applyPreset: state.applyPreset,
+      resetMotionProfile: state.resetMotionProfile,
+    }))
+  );
 
   const t = translations[language] || translations.ru;
   const [animListOpen, setAnimListOpen] = useState(false);
