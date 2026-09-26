@@ -863,9 +863,42 @@ export const AIScreen: React.FC = () => {
 
       {/* Interactive Preview Card before Apply */}
       {previewItems.length > 0 && (
-        <div className="ai-screen-card glass">
-          <div className="ai-preview-header">
-            <div className="preview-badges">
+        <div
+          className="ai-screen-card glass"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            width: "100%",
+            boxSizing: "border-box",
+            borderRadius: "var(--r3)",
+            padding: 16,
+            marginTop: 14,
+            marginBottom: 16,
+          }}
+        >
+          <div
+            className="ai-preview-header"
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+              width: "100%",
+              marginBottom: 14,
+              paddingBottom: 10,
+              borderBottom: "1px solid var(--outline)",
+              boxSizing: "border-box",
+            }}
+          >
+            <div
+              className="preview-badges"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
               {detectedIntent === "add" && (
                 <span className="intent-badge add">+ {selectedCount} к добавлению</span>
               )}
@@ -887,36 +920,110 @@ export const AIScreen: React.FC = () => {
             </div>
 
             {estimatedCost > 0 && (
-              <span className="preview-total">
+              <span
+                className="preview-total"
+                style={{
+                  fontSize: 14,
+                  fontWeight: 800,
+                  color: "var(--primary)",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 ~{formatCurrency(estimatedCost, currency, language)}
               </span>
             )}
           </div>
 
-          <div className="ai-preview-list">
+          <div
+            className="ai-preview-list"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              width: "100%",
+              maxHeight: 280,
+              overflowY: "auto",
+              boxSizing: "border-box",
+              paddingRight: 4,
+            }}
+          >
             {previewItems.map((item) => (
               <div
                 key={item.id}
                 className={`ai-preview-row ${item.selected ? "selected" : "deselected"}`}
+                style={{
+                  display: "flex",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: "var(--r2)",
+                  boxSizing: "border-box",
+                }}
                 onClick={() => toggleItemSelection(item.id)}
               >
-                <div className={`preview-checkbox ${item.selected ? "checked" : ""}`}>
+                <div
+                  className={`preview-checkbox ${item.selected ? "checked" : ""}`}
+                  style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: 6,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    background: item.selected ? "var(--primary)" : "transparent",
+                    borderColor: item.selected ? "var(--primary)" : "var(--muted)",
+                  }}
+                >
                   {item.selected && (
-                    <svg viewBox="0 0 24 24">
+                    <svg viewBox="0 0 24 24" style={{ width: 14, height: 14, stroke: "#ffffff", strokeWidth: 2.8, fill: "none" }}>
                       <path d="M20 6L9 17l-5-5" />
                     </svg>
                   )}
                 </div>
 
-                <div className="preview-item-info">
-                  <span className="preview-item-name">{item.name}</span>
-                  <span className="preview-item-meta">
+                <div
+                  className="preview-item-info"
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 2,
+                  }}
+                >
+                  <span
+                    className="preview-item-name"
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: "var(--on)",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {item.name}
+                  </span>
+                  <span className="preview-item-meta" style={{ fontSize: 12, color: "var(--muted)" }}>
                     {item.quantity} {item.unit} • {item.category}
                   </span>
                 </div>
 
                 {item.price ? (
-                  <span className="preview-item-price">
+                  <span
+                    className="preview-item-price"
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: "var(--on)",
+                      whiteSpace: "nowrap",
+                      marginLeft: 8,
+                      flexShrink: 0,
+                    }}
+                  >
                     {formatCurrency(item.price * item.quantity, currency, language)}
                   </span>
                 ) : null}
@@ -924,10 +1031,33 @@ export const AIScreen: React.FC = () => {
             ))}
           </div>
 
-          <div className="ai-preview-actions">
+          <div
+            className="ai-preview-actions"
+            style={{
+              width: "100%",
+              marginTop: 14,
+              boxSizing: "border-box",
+            }}
+          >
             <button
               className="ai-apply-btn"
               disabled={selectedCount === 0}
+              style={{
+                width: "100%",
+                height: 46,
+                borderRadius: "var(--r2)",
+                background: "var(--primary)",
+                color: "#ffffff",
+                fontSize: 15,
+                fontWeight: 700,
+                border: "none",
+                cursor: selectedCount === 0 ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: selectedCount === 0 ? 0.4 : 1,
+                boxShadow: "0 4px 16px color-mix(in srgb, var(--primary) 35%, transparent)",
+              }}
               onClick={handleApply}
             >
               {detectedIntent === "delete"
