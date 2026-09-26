@@ -4,7 +4,7 @@
   "outputDirectory": "frontend/dist",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index.py?__path__=/api/$1" },
-    { "source": "/((?!api/|assets/|src/|.*\\.(?:js|mjs|cjs|css|map|json|png|jpg|jpeg|svg|webp|ico|woff|woff2|txt|xml|wasm)$).*)$", "destination": "/index.html" }
+    { "source": "/((?!api/|assets/|.*\\.[a-zA-Z0-9]+$).*)", "destination": "/index.html" }
   ],
   "headers": [
     {
