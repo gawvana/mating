@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.api.routes import ai, bot, health, items, profile, stats
+from backend.api.routes import ai, bot, health, history, items, profile, share, stats
 from backend.core.config import settings
 
 logging.basicConfig(
@@ -117,6 +117,8 @@ app.include_router(profile.router)
 app.include_router(items.router)
 app.include_router(ai.router)
 app.include_router(stats.router)
+app.include_router(history.router)
+app.include_router(share.router)
 app.include_router(bot.router)
 
 # Mount frontend static distribution if built

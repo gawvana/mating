@@ -3,16 +3,18 @@ import { translations } from "../i18n";
 import { ScreenTab, useAppStore } from "../state/useAppStore";
 import { triggerHaptic } from "../telegram/telegram";
 
-const TABS: ScreenTab[] = ["list", "stats", "settings"];
+const TABS: ScreenTab[] = ["list", "ai", "history", "stats", "settings"];
 
 export const BottomDock: React.FC = () => {
   // Atomic store selectors for zero unnecessary re-renders
   const activeTab = useAppStore((s) => s.activeTab);
   const setActiveTab = useAppStore((s) => s.setActiveTab);
   const language = useAppStore((s) => s.language);
-  const openSheet = useAppStore((s) => s.openSheet);
   const closeSheet = useAppStore((s) => s.closeSheet);
   const isSheetOpen = useAppStore((s) => s.isSheetOpen);
+  const isQuickAddOpen = useAppStore((s) => s.isQuickAddOpen);
+  const openQuickAdd = useAppStore((s) => s.openQuickAdd);
+  const closeQuickAdd = useAppStore((s) => s.closeQuickAdd);
   const hapticsEnabled = useAppStore((s) => s.hapticsEnabled);
 
   const t = translations[language];
@@ -24,14 +26,14 @@ export const BottomDock: React.FC = () => {
   const dockStartX = useRef(0);
   const lastIndex = useRef(-1);
 
-  const tabIndex = activeTab === "list" ? 0 : activeTab === "stats" ? 1 : 2;
+  const tabIndex = Math.max(0, TABS.indexOf(activeTab));
 
   // Cached geometry calculation
   const at = useCallback((clientX: number): number => {
     const r = dockRectRef.current;
     if (!r) return 0;
     const pad = 6;
-    const n = 3;
+    const n = TABS.length;
     const raw = Math.floor((clientX - r.left - pad) / ((r.width - 2 * pad) / n));
     return Math.max(0, Math.min(n - 1, raw));
   }, []);
@@ -97,6 +99,7 @@ export const BottomDock: React.FC = () => {
     const finalIdx = lastIndex.current;
     if (finalIdx >= 0 && finalIdx < TABS.length) {
       if (isSheetOpen) closeSheet();
+      if (isQuickAddOpen) closeQuickAdd();
       setActiveTab(TABS[finalIdx]);
     }
   };
@@ -117,18 +120,24 @@ export const BottomDock: React.FC = () => {
   const handleTabClick = (tab: ScreenTab) => {
     if (hapticsEnabled) triggerHaptic("selection");
     if (isSheetOpen) closeSheet();
+    if (isQuickAddOpen) closeQuickAdd();
     setActiveTab(tab);
   };
 
   const handleFabClick = () => {
-    if (isSheetOpen) {
+    if (isQuickAddOpen) {
+      if (hapticsEnabled) triggerHaptic("light");
+      closeQuickAdd();
+    } else if (isSheetOpen) {
       if (hapticsEnabled) triggerHaptic("selection");
       closeSheet();
     } else {
       if (hapticsEnabled) triggerHaptic("medium");
-      openSheet("quick");
+      openQuickAdd();
     }
   };
+
+  const isAnyOpen = isSheetOpen || isQuickAddOpen;
 
   return (
     <div className="chrome" id="chrome">
@@ -137,10 +146,10 @@ export const BottomDock: React.FC = () => {
         <button
           className="fab press"
           id="fab"
-          data-open={isSheetOpen ? "true" : "false"}
+          data-open={isAnyOpen ? "true" : "false"}
           onClick={handleFabClick}
-          aria-label={isSheetOpen ? "Закрыть" : t.addTitle}
-          title={isSheetOpen ? "Закрыть" : t.addTitle}
+          aria-label={isAnyOpen ? "Закрыть" : t.addTitle}
+          title={isAnyOpen ? "Закрыть" : t.addTitle}
         >
           {/* Plus icon */}
           <svg viewBox="0 0 24 24" className="fab-icon-plus" aria-hidden="true">
@@ -166,10 +175,12 @@ export const BottomDock: React.FC = () => {
         style={{
           "--i": tabIndex,
           "--tab-idx": tabIndex,
+          "--tab-count": 5,
         } as React.CSSProperties}
       >
         <i className="lens" aria-hidden="true" />
 
+        {/* 1. List Tab */}
         <button
           className={`tab ${activeTab === "list" ? "on" : ""}`}
           onClick={(e) => {
@@ -187,6 +198,40 @@ export const BottomDock: React.FC = () => {
           <span>{t.tabList}</span>
         </button>
 
+        {/* 2. AI Tab */}
+        <button
+          className={`tab ${activeTab === "ai" ? "on" : ""}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleTabClick("ai");
+          }}
+          aria-label={t.tabAI}
+          aria-current={activeTab === "ai" ? "page" : undefined}
+        >
+          <svg viewBox="0 0 24 24">
+            <path d="M12 2l2.4 5.6L20 8.5l-4 4.3 1 5.7-5-3-5 3 1-5.7-4-4.3 5.6-.9z" />
+          </svg>
+          <span>{t.tabAI}</span>
+        </button>
+
+        {/* 3. History Tab */}
+        <button
+          className={`tab ${activeTab === "history" ? "on" : ""}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleTabClick("history");
+          }}
+          aria-label={t.tabHistory}
+          aria-current={activeTab === "history" ? "page" : undefined}
+        >
+          <svg viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="9" />
+            <polyline points="12 7 12 12 15 15" />
+          </svg>
+          <span>{t.tabHistory}</span>
+        </button>
+
+        {/* 4. Stats Tab */}
         <button
           className={`tab ${activeTab === "stats" ? "on" : ""}`}
           onClick={(e) => {
@@ -202,6 +247,7 @@ export const BottomDock: React.FC = () => {
           <span>{t.tabStats}</span>
         </button>
 
+        {/* 5. Settings Tab */}
         <button
           className={`tab ${activeTab === "settings" ? "on" : ""}`}
           onClick={(e) => {

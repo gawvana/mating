@@ -9,17 +9,17 @@ def test_fast_deterministic_parser_multilingual():
     assert items[0].name == "Pomidor"
     assert items[0].quantity == 1.0
     assert items[0].unit == "шт"
-    assert items[0].estimated_price == 15.0
+    assert items[0].estimated_price == 15000.0
 
-    assert items[1].name == "Baqlojan"
-    assert items[1].estimated_price == 15.0
+    assert items[1].name == "Baqlajon"
+    assert items[1].estimated_price == 15000.0
 
     assert items[2].name == "Bodring"
-    assert items[2].estimated_price == 10.0
+    assert items[2].estimated_price == 10000.0
 
-    # Total should be 40
+    # Total should be 40,000 UZS under the Bare Number Rule
     grand_total = sum(i.quantity * (i.estimated_price or 0) for i in items)
-    assert grand_total == 40.0
+    assert grand_total == 40000.0
 
 def test_fast_deterministic_parser_with_units_and_prices():
     text = "Помидор 2 кг 15000\nОгурцы 1 кг 12000\nХлеб 2 шт за 10000"

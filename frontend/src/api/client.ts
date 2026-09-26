@@ -1,4 +1,14 @@
-import { AIParseResponse, MonthlyStats, ShoppingItem, User } from "../types";
+import {
+  AIParseResponse,
+  MonthlyStats,
+  ShoppingItem,
+  User,
+  HistoryItem,
+  HistoryResponse,
+  CreateShareResponse,
+  PublicSnapshotResponse,
+  SharedItemPayload,
+} from "../types";
 import { getTelegramInitData, isTelegramWebApp } from "../telegram/telegram";
 import { parseShoppingTextDeterministically, calculateTotals } from "../utils/localParser";
 
@@ -456,6 +466,97 @@ class ApiClient {
     if (month) query.set("month", month.toString());
     const qs = query.toString() ? `?${query.toString()}` : "";
     return this.request<MonthlyStats>(`/api/v1/stats/monthly${qs}`);
+  }
+
+  // ── Purchase History ──
+  async getHistory(): Promise<HistoryResponse> {
+    if (!isTelegramWebApp()) {
+      const items = getGuestItems();
+      const purchased = items.filter((it) => it.is_purchased);
+      if (purchased.length === 0) {
+        return { groups: [], frequent_items: [] };
+      }
+      const groupItems: HistoryItem[] = purchased.map((it) => ({
+        id: it.id,
+        name: it.name,
+        quantity: it.quantity,
+        unit: it.unit,
+        category: it.category,
+        price: it.price,
+        currency_code: it.currency_code || "UZS",
+        purchased_at: it.purchased_at || it.created_at,
+      }));
+      const totalSpent = groupItems.reduce((acc, it) => acc + (it.price ? it.price * it.quantity : 0), 0);
+      return {
+        groups: [
+          {
+            date: new Date().toISOString().split("T")[0],
+            label: "Сегодня",
+            total_spent: totalSpent,
+            item_count: groupItems.length,
+            currency_code: "UZS",
+            items: groupItems,
+          },
+        ],
+        frequent_items: groupItems.slice(0, 5).map((it) => ({
+          name: it.name,
+          category: it.category,
+          count: 3,
+          every_days: 5,
+        })),
+      };
+    }
+    return this.request<HistoryResponse>("/api/v1/history");
+  }
+
+  // ── Share List ──
+  async createShareSnapshot(title: string = "Список покупок", items?: SharedItemPayload[]): Promise<CreateShareResponse> {
+    if (!isTelegramWebApp()) {
+      const listItems = items || getGuestItems().map((it) => ({
+        name: it.name,
+        quantity: it.quantity,
+        unit: it.unit,
+        category: it.category,
+        price: it.price,
+        currency_code: it.currency_code,
+        is_purchased: it.is_purchased,
+      }));
+      const token = generateUUID().replace(/-/g, "").slice(0, 16);
+      const shareUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/share/${token}`;
+      try {
+        localStorage.setItem(`mating_share_${token}`, JSON.stringify({ token, title, items: listItems, created_at: new Date().toISOString() }));
+      } catch {}
+      return {
+        token,
+        share_url: shareUrl,
+        item_count: listItems.length,
+        created_at: new Date().toISOString(),
+      };
+    }
+
+    return this.request<CreateShareResponse>("/api/v1/share", {
+      method: "POST",
+      body: JSON.stringify({ title, items }),
+    });
+  }
+
+  async getSharedSnapshot(token: string): Promise<PublicSnapshotResponse> {
+    if (!isTelegramWebApp()) {
+      try {
+        const raw = localStorage.getItem(`mating_share_${token}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          return {
+            token,
+            title: parsed.title,
+            item_count: parsed.items.length,
+            created_at: parsed.created_at,
+            items: parsed.items,
+          };
+        }
+      } catch {}
+    }
+    return this.request<PublicSnapshotResponse>(`/api/v1/share/${token}`);
   }
 }
 

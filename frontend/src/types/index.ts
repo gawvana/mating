@@ -63,3 +63,61 @@ export interface AIParseResponse {
   items: AIParsedItem[];
   raw_text: string;
 }
+
+export interface HistoryItem {
+  id: string;
+  name: string;
+  quantity: number;
+  unit: string;
+  category: string;
+  price: number | null;
+  currency_code: string;
+  purchased_at: string | null;
+}
+
+export interface HistoryGroup {
+  date: string;
+  label: string;
+  total_spent: number;
+  item_count: number;
+  currency_code: string;
+  items: HistoryItem[];
+}
+
+export interface FrequentItem {
+  name: string;
+  category: string;
+  count: number;
+  every_days: number;
+}
+
+export interface HistoryResponse {
+  groups: HistoryGroup[];
+  frequent_items: FrequentItem[];
+}
+
+export interface SharedItemPayload {
+  name: string;
+  quantity: number;
+  unit: string;
+  category: string;
+  price: number | null;
+  currency_code?: string;
+  is_purchased?: boolean;
+}
+
+export interface CreateShareResponse {
+  token: string;
+  share_url: string;
+  item_count: number;
+  created_at: string;
+}
+
+export interface PublicSnapshotResponse {
+  token: string;
+  title: string;
+  item_count: number;
+  created_at: string;
+  items: SharedItemPayload[];
+}
+

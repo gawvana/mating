@@ -5,11 +5,18 @@ import { AddSheet } from "./components/AddSheet";
 import { BottomDock } from "./components/BottomDock";
 import { NavBar } from "./components/NavBar";
 import { UndoToast } from "./components/UndoToast";
+import { QuickAddBar } from "./components/QuickAddBar";
 import { ListScreen } from "./screens/ListScreen";
 import { flushOfflineQueue } from "./state/offlineQueue";
 import { DEFAULT_MOTION_PROFILE, useAppStore } from "./state/useAppStore";
 import { initTelegramApp, setupTelegramBackButton } from "./telegram/telegram";
 
+const AIScreen = React.lazy(() =>
+  import("./screens/AIScreen").then((m) => ({ default: m.AIScreen }))
+);
+const HistoryScreen = React.lazy(() =>
+  import("./screens/HistoryScreen").then((m) => ({ default: m.HistoryScreen }))
+);
 const StatsScreen = React.lazy(() =>
   import("./screens/StatsScreen").then((m) => ({ default: m.StatsScreen }))
 );
@@ -35,7 +42,9 @@ export const App: React.FC = () => {
   useEffect(() => {
     const handlePopState = () => {
       const path = window.location.pathname.toLowerCase();
-      if (path.includes("stats")) setActiveTab("stats");
+      if (path.includes("ai")) setActiveTab("ai");
+      else if (path.includes("history")) setActiveTab("history");
+      else if (path.includes("stats")) setActiveTab("stats");
       else if (path.includes("settings")) setActiveTab("settings");
       else setActiveTab("list");
     };
@@ -306,6 +315,8 @@ export const App: React.FC = () => {
           <main className="wrap screen-crossfade" key={activeTab}>
             {activeTab === "list" && <ListScreen />}
             <React.Suspense fallback={<div className="skeleton" style={{ height: 120, margin: "20px 0", borderRadius: "var(--r3)" }} />}>
+              {activeTab === "ai" && <AIScreen />}
+              {activeTab === "history" && <HistoryScreen />}
               {activeTab === "stats" && <StatsScreen />}
               {activeTab === "settings" && <SettingsScreen />}
             </React.Suspense>
@@ -315,6 +326,9 @@ export const App: React.FC = () => {
 
       {/* Floating Bottom Chrome: FAB + Glass Dock with drag pick() and lens */}
       <BottomDock />
+
+      {/* Fast Mobile Quick Add Bar */}
+      <QuickAddBar />
 
       {/* Slide-up Add Sheet with real-time iOS presentation */}
       <AddSheet />

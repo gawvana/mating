@@ -4,6 +4,8 @@ const rawTranslations = {
   ru: {
     appTitle: "Mating",
     tabList: "Список",
+    tabAI: "AI",
+    tabHistory: "История",
     tabStats: "Статистика",
     tabSettings: "Настройки",
     greetingTitle: "Список покупок",
@@ -110,6 +112,8 @@ const rawTranslations = {
   uz: {
     appTitle: "Mating",
     tabList: "Ro'yxat",
+    tabAI: "AI",
+    tabHistory: "Tarix",
     tabStats: "Statistika",
     tabSettings: "Sozlamalar",
     greetingTitle: "Xaridlar ro'yxati",
@@ -216,6 +220,8 @@ const rawTranslations = {
   en: {
     appTitle: "Mating",
     tabList: "List",
+    tabAI: "AI",
+    tabHistory: "History",
     tabStats: "Stats",
     tabSettings: "Settings",
     greetingTitle: "Shopping List",

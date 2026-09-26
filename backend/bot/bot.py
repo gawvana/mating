@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
@@ -16,19 +17,24 @@ from aiogram.types import (
     Message,
     WebAppInfo,
 )
+from sqlalchemy import select
 
 from backend.api.schemas import CreateItemRequest
 from backend.bot.keyboards import (
+    ai_keyboard,
     back_keyboard,
     confirm_items_keyboard,
     em,
+    history_keyboard,
     item_list_keyboard,
     settings_keyboard,
+    share_keyboard,
     start_keyboard,
 )
 from backend.core.config import settings
 from backend.core.security import hash_telegram_id
 from backend.database.engine import AsyncSessionLocal
+from backend.database.models import ShoppingItem
 from backend.repositories.user_repository import UserRepository
 from backend.services.ai_service import ai_service
 from backend.services.item_service import ItemService
@@ -54,12 +60,14 @@ async def setup_bot_commands_and_menu(bot: Bot) -> None:
     """Register official Telegram commands list and WebApp menu button."""
     try:
         commands = [
-            BotCommand(command="start", description="Главное меню и Mini App"),
-            BotCommand(command="list", description="Список покупок"),
-            BotCommand(command="add", description="Добавить товары с AI"),
-            BotCommand(command="stats", description="Статистика расходов"),
-            BotCommand(command="settings", description="Настройки и язык"),
-            BotCommand(command="help", description="Справка по боту"),
+            BotCommand(command="start", description="Запустить Mating"),
+            BotCommand(command="add", description="Добавить товары"),
+            BotCommand(command="list", description="Открыть список"),
+            BotCommand(command="ai", description="AI помощник"),
+            BotCommand(command="history", description="История покупок"),
+            BotCommand(command="settings", description="Настройки"),
+            BotCommand(command="share", description="Поделиться списком"),
+            BotCommand(command="help", description="Помощь"),
         ]
         await bot.set_my_commands(commands=commands, scope=BotCommandScopeDefault())
         logger.info("Bot commands successfully registered")
@@ -92,7 +100,7 @@ async def setup_bot_commands_and_menu(bot: Bot) -> None:
 
 @dp.message(CommandStart())
 async def handle_start(message: Message):
-    """Handle /start command."""
+    """Handle /start command with canonical Mating welcome."""
     from_user = message.from_user
     if not from_user:
         return
@@ -108,11 +116,10 @@ async def handle_start(message: Message):
         )
 
     greeting = (
-        f"{em('celebrate', '🎉')} <b>Привет, {from_user.first_name or 'друг'}!</b>\n\n"
-        f"Я <b>Mating</b> — твой быстрый умный помощник для покупок.\n\n"
-        f"• Напиши мне список текстом обычным языком:\n"
-        f"<i>«молоко 2л, картошка 3кг, сыр 300г, хлеб»</i>\n\n"
-        f"• Или нажми <b>«Открыть Mating»</b> для работы в удобном Mini App!"
+        f"<b>Mating 👋</b>\n\n"
+        f"Привет, {from_user.first_name or 'друг'}! Я твой умный AI-помощник для покупок.\n\n"
+        f"• Напиши мне список сообщением (например: <i>«молоко 2л, хлеб, помидоры 10»</i>)\n"
+        f"• Или запусти Mini App для быстрого и наглядного управления:"
     )
     await message.answer(greeting, reply_markup=start_keyboard())
 
@@ -194,16 +201,82 @@ async def handle_help_command(message: Message):
     """Handle /help command."""
     text = (
         f"{em('info', 'ℹ️')} <b>Команды Mating:</b>\n\n"
-        f"/start — Главное меню и запуск\n"
+        f"/start — Запустить Mating и открыть меню\n"
+        f"/add &lt;текст&gt; — Добавить товары в список\n"
         f"/list — Просмотреть текущий список покупок\n"
-        f"/add &lt;текст&gt; — Добавить товары с AI разбором\n"
-        f"/stats — Аналитика и расходы за месяц\n"
+        f"/ai — AI помощник для покупок\n"
+        f"/history — История и повтор покупок\n"
         f"/settings — Настройки языка и валюты\n"
+        f"/share — Поделиться списком\n"
+        f"/stats — Аналитика расходов за месяц\n"
         f"/help — Справка по работе с ботом\n\n"
-        f"<b>Умный ввод:</b> просто отправьте боту список сообщением:\n"
-        f"<i>«молоко 2л, картошка 3кг, сыр 300г»</i>"
+        f"<b>Умный чат:</b> напишите боту в свободной форме:\n"
+        f"• <i>«молоко 2л, хлеб, помидоры 10»</i>\n"
+        f"• <i>«покажи список»</i>\n"
+        f"• <i>«удали хлеб»</i>\n"
+        f"• <i>«верни хлеб»</i>\n"
+        f"• <i>«купил молоко»</i>"
     )
     await message.answer(text, reply_markup=back_keyboard())
+
+
+@dp.message(Command("ai"))
+async def handle_ai_command(message: Message):
+    """Handle /ai command."""
+    text = (
+        f"🤖 <b>AI Ассистент Mating</b>\n\n"
+        f"Я умею понимать естественный язык, узбекский и русский, опечатки и числа:\n\n"
+        f"• <i>«молоко 2л, картошка 3кг, сыр 300г»</i> — распознает единицы и количество\n"
+        f"• <i>«pomidor 10 bodring 10»</i> — число без единицы считается ценой (10 000 сум)\n"
+        f"• <i>«купи хлеб»</i> / <i>«отметь сыр»</i> — отметит купленным\n"
+        f"• <i>«удали молоко»</i> — удалит товар из списка\n"
+        f"• <i>«верни молоко»</i> — восстановит удаленный товар\n"
+        f"• <i>«покажи список»</i> — выведет актуальный список"
+    )
+    await message.answer(text, reply_markup=ai_keyboard())
+
+
+@dp.message(Command("history"))
+async def handle_history_command(message: Message):
+    """Handle /history command."""
+    from_user = message.from_user
+    if not from_user:
+        return
+
+    tg_hash = hash_telegram_id(from_user.id)
+    async with AsyncSessionLocal() as session:
+        user_repo = UserRepository(session)
+        user = await user_repo.get_by_telegram_hash(tg_hash)
+        if not user:
+            user = await user_repo.get_or_create(tg_hash, from_user.username, from_user.first_name)
+        service = ItemService(session)
+        stats = await service.get_monthly_stats(user.id)
+
+    text = (
+        f"📅 <b>История покупок</b>\n\n"
+        f"Куплено в этом месяце: <b>{stats.items_purchased_count}</b> товаров\n"
+        f"Потрачено: <b>{stats.total_spent:,.0f} {stats.currency_code}</b>\n\n"
+        f"Для детальной истории по датам и быстрого повтора покупок откройте Mini App:"
+    )
+    await message.answer(text, reply_markup=history_keyboard())
+
+
+@dp.message(Command("share"))
+async def handle_share_command(message: Message):
+    """Handle /share command."""
+    from_user = message.from_user
+    if not from_user:
+        return
+
+    share_url = f"{settings.WEBAPP_URL}/#share" if settings.WEBAPP_URL else "https://mating.vercel.app/#share"
+    text = (
+        f"🔗 <b>Поделиться списком покупок</b>\n\n"
+        f"Вы можете поделиться своим списком покупок через безопасную ссылку-снимок:\n"
+        f"• Ссылка доступна только для чтения\n"
+        f"• Личные данные пользователя не раскрываются\n\n"
+        f"Откройте список по кнопке ниже и отправьте ссылку близким:"
+    )
+    await message.answer(text, reply_markup=share_keyboard(share_url))
 
 
 @dp.message(Command("settings"))
@@ -216,7 +289,9 @@ async def handle_settings_command(message: Message):
     tg_hash = hash_telegram_id(from_user.id)
     async with AsyncSessionLocal() as session:
         user_repo = UserRepository(session)
-        user = await user_repo.get_or_create(tg_hash, from_user.username, from_user.first_name)
+        user = await user_repo.get_by_telegram_hash(tg_hash)
+        if not user:
+            user = await user_repo.get_or_create(tg_hash, from_user.username, from_user.first_name)
         lang = user.language_code
 
     text = (
@@ -245,10 +320,106 @@ async def handle_add_command(message: Message):
 
 @dp.message(F.text)
 async def handle_natural_text(message: Message):
-    """Handle natural language text message without command."""
-    if message.text.startswith("/"):
+    """Handle natural language text message without command, routing intents."""
+    if not message.text or message.text.startswith("/"):
         return
-    await process_natural_input(message, message.text)
+
+    raw_text = message.text.strip()
+    text_lower = raw_text.lower()
+
+    # Intent 1: Show List
+    if text_lower in {"список", "покажи список", "мой список", "что купить", "что ещё купить", "мои покупки", "ro'yxat", "list"}:
+        await handle_list_command(message)
+        return
+
+    # Intent 2: Clear Purchased
+    if text_lower in {"очисти купленные", "очистить купленные", "удали купленные", "убрать купленные", "clear", "tozala"}:
+        from_user = message.from_user
+        if from_user:
+            tg_hash = hash_telegram_id(from_user.id)
+            async with AsyncSessionLocal() as session:
+                user_repo = UserRepository(session)
+                user = await user_repo.get_by_telegram_hash(tg_hash)
+                if user:
+                    service = ItemService(session)
+                    cleared = await service.clear_purchased(user.id)
+                    await message.answer(f"🗑 Очищено <b>{cleared}</b> купленных товаров.", reply_markup=back_keyboard())
+                    return
+
+    # Intent 3: Delete Item ("удали хлеб", "убери молоко")
+    m_del = re.match(r"^(?:удали|убери|убрать|очисти|delete|o'chir)\s+(.+)$", text_lower)
+    if m_del:
+        target = m_del.group(1).strip()
+        from_user = message.from_user
+        if from_user and target:
+            tg_hash = hash_telegram_id(from_user.id)
+            async with AsyncSessionLocal() as session:
+                user_repo = UserRepository(session)
+                user = await user_repo.get_by_telegram_hash(tg_hash)
+                if user:
+                    service = ItemService(session)
+                    items = await service.list_items(user.id)
+                    found = next((i for i in items if i.name.lower() == target or target in i.name.lower()), None)
+                    if found:
+                        await service.soft_delete(user.id, found.id)
+                        await message.answer(
+                            f"🗑 Товар <b>{found.name}</b> удален из списка.\nНапишите <i>«верни {found.name}»</i>, чтобы восстановить.",
+                            reply_markup=back_keyboard(),
+                        )
+                        return
+                    else:
+                        await message.answer(f"ℹ️ Товар «{target}» не найден в активном списке.", reply_markup=back_keyboard())
+                        return
+
+    # Intent 4: Restore Item ("верни молоко", "восстанови хлеб")
+    m_rest = re.match(r"^(?:верни|восстанови|restore|qaytar)\s+(.+)$", text_lower)
+    if m_rest:
+        target = m_rest.group(1).strip()
+        from_user = message.from_user
+        if from_user and target:
+            tg_hash = hash_telegram_id(from_user.id)
+            async with AsyncSessionLocal() as session:
+                user_repo = UserRepository(session)
+                user = await user_repo.get_by_telegram_hash(tg_hash)
+                if user:
+                    service = ItemService(session)
+                    stmt = select(ShoppingItem).where(
+                        ShoppingItem.user_id == user.id,
+                        ShoppingItem.deleted_at.is_not(None),
+                    )
+                    res = await session.execute(stmt)
+                    deleted_items = list(res.scalars().all())
+                    found = next((i for i in deleted_items if i.name.lower() == target or target in i.name.lower()), None)
+                    if found:
+                        await service.restore_item(user.id, found.id)
+                        await message.answer(f"✅ Товар <b>{found.name}</b> возвращен в список!", reply_markup=back_keyboard())
+                        return
+                    else:
+                        await message.answer(f"ℹ️ Удаленный товар «{target}» не найден.", reply_markup=back_keyboard())
+                        return
+
+    # Intent 5: Buy / Purchased Item ("купи хлеб", "купил хлеб", "отметь молоко купленным")
+    m_buy = re.match(r"^(?:купи|купил|купила|отметь|bought|sotib oldim)\s+(.+)$", text_lower)
+    if m_buy:
+        target = m_buy.group(1).replace("купленным", "").replace("купленной", "").strip()
+        from_user = message.from_user
+        if from_user and target:
+            tg_hash = hash_telegram_id(from_user.id)
+            async with AsyncSessionLocal() as session:
+                user_repo = UserRepository(session)
+                user = await user_repo.get_by_telegram_hash(tg_hash)
+                if user:
+                    service = ItemService(session)
+                    items = await service.list_items(user.id)
+                    found = next((i for i in items if not i.is_purchased and (i.name.lower() == target or target in i.name.lower())), None)
+                    if found:
+                        await service.toggle_purchased(user.id, found.id, expected_version=found.version)
+                        await message.answer(f"✅ <s>{found.name}</s> отмечен как купленный!", reply_markup=back_keyboard())
+                        return
+
+    # Clean leading "добавь ..." keywords before passing to item parser
+    clean_text = re.sub(r"^(?:добавь|добавить|qo'sh|add)\s+", "", raw_text, flags=re.IGNORECASE).strip()
+    await process_natural_input(message, clean_text or raw_text)
 
 
 async def process_natural_input(message: Message, text: str):
@@ -485,4 +656,42 @@ async def handle_callback_stats(call: CallbackQuery):
         f"Активных в списке: <b>{stats.active_items_count}</b>\n"
     )
     await call.message.edit_text(text, reply_markup=back_keyboard())
+    await call.answer()
+
+
+@dp.callback_query(F.data == "cmd_ai")
+async def handle_callback_ai(call: CallbackQuery):
+    text = (
+        f"🤖 <b>AI Ассистент Mating</b>\n\n"
+        f"Я умею понимать естественный язык, узбекский и русский, опечатки и числа:\n\n"
+        f"• <i>«молоко 2л, картошка 3кг, сыр 300г»</i> — распознает единицы и количество\n"
+        f"• <i>«pomidor 10 bodring 10»</i> — число без единицы считается ценой (10 000 сум)\n"
+        f"• <i>«купи хлеб»</i> / <i>«отметь сыр»</i> — отметит купленным\n"
+        f"• <i>«удали молоко»</i> — удалит товар из списка\n"
+        f"• <i>«верни молоко»</i> — восстановит удаленный товар\n"
+        f"• <i>«покажи список»</i> — выведет актуальный список"
+    )
+    await call.message.edit_text(text, reply_markup=ai_keyboard())
+    await call.answer()
+
+
+@dp.callback_query(F.data == "cmd_history")
+async def handle_callback_history(call: CallbackQuery):
+    from_user = call.from_user
+    tg_hash = hash_telegram_id(from_user.id)
+    async with AsyncSessionLocal() as session:
+        user_repo = UserRepository(session)
+        user = await user_repo.get_by_telegram_hash(tg_hash)
+        if not user:
+            user = await user_repo.get_or_create(tg_hash, from_user.username, from_user.first_name)
+        service = ItemService(session)
+        stats = await service.get_monthly_stats(user.id)
+
+    text = (
+        f"📅 <b>История покупок</b>\n\n"
+        f"Куплено в этом месяце: <b>{stats.items_purchased_count}</b> товаров\n"
+        f"Потрачено: <b>{stats.total_spent:,.0f} {stats.currency_code}</b>\n\n"
+        f"Для детальной истории по датам и быстрого повтора покупок откройте Mini App:"
+    )
+    await call.message.edit_text(text, reply_markup=history_keyboard())
     await call.answer()

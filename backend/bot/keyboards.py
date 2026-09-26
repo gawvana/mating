@@ -42,31 +42,73 @@ def em(name: str, fallback: str = "") -> str:
 
 
 def start_keyboard() -> InlineKeyboardMarkup:
-    """Main menu after /start."""
+    """Main menu after /start with exact Mating buttons:
+    [🛒 Открыть Mating]
+    [🤖 AI] [⚙️ Настройки]
+    """
     buttons = []
     if settings.WEBAPP_URL:
         buttons.append([
             InlineKeyboardButton(
-                text=f"{em('item', '🛍')} Открыть Mating",
+                text="🛒 Открыть Mating",
                 web_app=WebAppInfo(url=settings.WEBAPP_URL),
             )
         ])
     else:
         buttons.append([
             InlineKeyboardButton(
-                text=f"{em('item', '🛍')} Mating App",
+                text="🛒 Открыть Mating",
                 callback_data="cmd_list",
             )
         ])
 
     buttons.append([
-        InlineKeyboardButton(text=f"{em('list', '📋')} Мой список", callback_data="cmd_list"),
-        InlineKeyboardButton(text=f"{em('ai_parse', '✨')} Добавить", callback_data="cmd_add"),
+        InlineKeyboardButton(text="🤖 AI", callback_data="cmd_ai"),
+        InlineKeyboardButton(text="⚙️ Настройки", callback_data="cmd_settings"),
     ])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def ai_keyboard() -> InlineKeyboardMarkup:
+    """AI Assistant menu."""
+    buttons = []
+    if settings.WEBAPP_URL:
+        buttons.append([
+            InlineKeyboardButton(
+                text="🤖 Открыть AI в Mini App",
+                web_app=WebAppInfo(url=f"{settings.WEBAPP_URL}#ai"),
+            )
+        ])
     buttons.append([
-        InlineKeyboardButton(text=f"{em('stats', '📊')} Статистика", callback_data="cmd_stats"),
-        InlineKeyboardButton(text=f"{em('settings', '⚙️')} Настройки", callback_data="cmd_settings"),
+        InlineKeyboardButton(text="📋 Список", callback_data="cmd_list"),
+        InlineKeyboardButton(text="◁ Главное меню", callback_data="back_main"),
     ])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def history_keyboard() -> InlineKeyboardMarkup:
+    """History menu."""
+    buttons = []
+    if settings.WEBAPP_URL:
+        buttons.append([
+            InlineKeyboardButton(
+                text="📅 Открыть Историю в Mini App",
+                web_app=WebAppInfo(url=f"{settings.WEBAPP_URL}#history"),
+            )
+        ])
+    buttons.append([
+        InlineKeyboardButton(text="📋 Список", callback_data="cmd_list"),
+        InlineKeyboardButton(text="◁ Главное меню", callback_data="back_main"),
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def share_keyboard(share_url: str) -> InlineKeyboardMarkup:
+    """Share menu."""
+    buttons = [
+        [InlineKeyboardButton(text="🔗 Открыть список", url=share_url)],
+        [InlineKeyboardButton(text="◁ Главное меню", callback_data="back_main")],
+    ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 

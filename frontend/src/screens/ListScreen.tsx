@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ConflictError } from "../api/client";
 import { formatCurrency, Language, translations } from "../i18n";
-import { useAppStore } from "../state/useAppStore";
+import { SmartSortMode, useAppStore } from "../state/useAppStore";
 import { triggerHaptic } from "../telegram/telegram";
 import { ShoppingItem } from "../types";
 import { SwipeableItem } from "../components/SwipeableItem";
@@ -127,6 +127,9 @@ interface ItemRowProps {
   onDelete: (item: ShoppingItem) => void;
   onOpenCtx: (item: ShoppingItem, x: number, y: number) => void;
   onOpenEdit?: (item: ShoppingItem, rect?: { top: number; left: number; width: number; height: number } | null) => void;
+  onDragStart?: (itemId: string, e: React.PointerEvent) => void;
+  onDragMove?: (e: React.PointerEvent) => void;
+  onDragEnd?: (e: React.PointerEvent) => void;
   hapticsEnabled: boolean;
   longPressEnabled?: boolean;
   longPressDuration?: number;
@@ -140,6 +143,9 @@ const ItemRow: React.FC<ItemRowProps> = React.memo(({
   onDelete,
   onOpenCtx,
   onOpenEdit,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
   hapticsEnabled,
   longPressEnabled = true,
   longPressDuration = 480,
@@ -295,6 +301,38 @@ const ItemRow: React.FC<ItemRowProps> = React.memo(({
         </div>
       )}
 
+      {/* Drag handle for manual reorder */}
+      {!item.is_purchased && onDragStart && (
+        <button
+          type="button"
+          className="item-drag-btn"
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            onDragStart(item.id, e);
+          }}
+          onPointerMove={(e) => {
+            if (onDragMove) onDragMove(e);
+          }}
+          onPointerUp={(e) => {
+            if (onDragEnd) onDragEnd(e);
+          }}
+          onPointerCancel={(e) => {
+            if (onDragEnd) onDragEnd(e);
+          }}
+          aria-label="Перетащить"
+          title="Перетащить"
+        >
+          <svg viewBox="0 0 24 24" style={{ width: 14, height: 14, fill: "currentColor", opacity: 0.45 }}>
+            <circle cx="9" cy="6" r="1.5" />
+            <circle cx="15" cy="6" r="1.5" />
+            <circle cx="9" cy="12" r="1.5" />
+            <circle cx="15" cy="12" r="1.5" />
+            <circle cx="9" cy="18" r="1.5" />
+            <circle cx="15" cy="18" r="1.5" />
+          </svg>
+        </button>
+      )}
+
       {/* Delete action */}
       <button
         type="button"
@@ -331,6 +369,10 @@ export const ListScreen: React.FC = () => {
   const setIsSearchOpen = useAppStore((s) => s.setIsSearchOpen);
   const categoryOrder = useAppStore((s) => s.categoryOrder);
   const setCategoryOrder = useAppStore((s) => s.setCategoryOrder);
+  const smartSortMode = useAppStore((s) => s.smartSortMode);
+  const setSmartSortMode = useAppStore((s) => s.setSmartSortMode);
+  const customItemOrder = useAppStore((s) => s.customItemOrder);
+  const setCustomItemOrder = useAppStore((s) => s.setCustomItemOrder);
   const t = translations[language] || translations.ru;
 
   const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORY);
@@ -342,6 +384,16 @@ export const ListScreen: React.FC = () => {
   const [ptrDistance, setPtrDistance] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [draggedCat, setDraggedCat] = useState<string | null>(null);
+
+  // Drag and drop manual reordering state
+  const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const dragStartY = useRef(0);
+  const activeDragElement = useRef<HTMLElement | null>(null);
+
+  // Share list state
+  const [shareSnapshot, setShareSnapshot] = useState<{ token: string; url: string; count: number } | null>(null);
+  const [isSharing, setIsSharing] = useState(false);
 
   const swipeEnabled = motionProfile?.swipeResistance?.enabled ?? true;
   const longPressEnabled = motionProfile?.longPressMenu?.enabled ?? true;
@@ -636,19 +688,148 @@ export const ListScreen: React.FC = () => {
     return list;
   }, [purchasedItems, selectedCategory, searchQuery]);
 
+  // Sorted active items based on smartSortMode
+  const sortedActive = useMemo(() => {
+    const list = [...filteredActive];
+    if (smartSortMode === "price") {
+      return list.sort((a, b) => (b.price || 0) - (a.price || 0));
+    }
+    if (smartSortMode === "name") {
+      return list.sort((a, b) => a.name.localeCompare(b.name, language === "uz" ? "uz" : "ru"));
+    }
+    if (smartSortMode === "recent") {
+      return list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    }
+    if (smartSortMode === "category") {
+      return list.sort((a, b) => (a.category || "").localeCompare(b.category || ""));
+    }
+    if (smartSortMode === "custom") {
+      const orderMap = new Map((customItemOrder || []).map((id, idx) => [id, idx]));
+      return list.sort((a, b) => {
+        const orderA = orderMap.has(a.id) ? (orderMap.get(a.id) as number) : 99999;
+        const orderB = orderMap.has(b.id) ? (orderMap.get(b.id) as number) : 99999;
+        return orderA - orderB;
+      });
+    }
+    return list;
+  }, [filteredActive, smartSortMode, customItemOrder, language]);
+
   // Section grouping for long list reveal (#73)
   const groupedSections = useMemo(() => {
-    if (filteredActive.length < 8 || selectedCategory !== ALL_CATEGORY || searchQuery.trim()) {
+    if (sortedActive.length < 8 || selectedCategory !== ALL_CATEGORY || searchQuery.trim() || smartSortMode !== "default") {
       return null;
     }
     const map = new Map<string, ShoppingItem[]>();
-    filteredActive.forEach((it) => {
+    sortedActive.forEach((it) => {
       const c = it.category || "Другое";
       if (!map.has(c)) map.set(c, []);
       map.get(c)!.push(it);
     });
     return Array.from(map.entries());
-  }, [filteredActive, selectedCategory, searchQuery]);
+  }, [sortedActive, selectedCategory, searchQuery, smartSortMode]);
+
+  // Drag and drop reorder handlers
+  const handleStartDrag = useCallback((itemId: string, e: React.PointerEvent) => {
+    if (hapticsEnabled) triggerHaptic("medium");
+    setDraggedItemId(itemId);
+    dragStartY.current = e.clientY;
+    const target = e.currentTarget as HTMLElement;
+    activeDragElement.current = target.closest(".swipe-item") as HTMLElement;
+    try {
+      target.setPointerCapture(e.pointerId);
+    } catch {}
+  }, [hapticsEnabled]);
+
+  const handleDragPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!draggedItemId) return;
+    const dy = e.clientY - dragStartY.current;
+    if (activeDragElement.current) {
+      activeDragElement.current.style.transform = `translateY(${dy}px) scale(1.02)`;
+      activeDragElement.current.style.zIndex = "20";
+      activeDragElement.current.classList.add("drag-lift");
+    }
+
+    const itemsContainer = document.querySelector(".active-list-container");
+    if (itemsContainer) {
+      const rows = Array.from(itemsContainer.querySelectorAll(".swipe-item"));
+      const hoverIndex = rows.findIndex((row) => {
+        const rect = row.getBoundingClientRect();
+        return e.clientY >= rect.top && e.clientY <= rect.bottom;
+      });
+      if (hoverIndex !== -1 && hoverIndex !== dragOverIndex) {
+        setDragOverIndex(hoverIndex);
+        if (hapticsEnabled) triggerHaptic("selection");
+      }
+    }
+  }, [draggedItemId, dragOverIndex, hapticsEnabled]);
+
+  const handleDragPointerUp = useCallback((e: React.PointerEvent) => {
+    if (!draggedItemId) return;
+    if (activeDragElement.current) {
+      activeDragElement.current.style.transform = "";
+      activeDragElement.current.style.zIndex = "";
+      activeDragElement.current.classList.remove("drag-lift");
+    }
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {}
+
+    const fromIdx = sortedActive.findIndex((i) => i.id === draggedItemId);
+    const toIdx = dragOverIndex;
+
+    if (fromIdx !== -1 && toIdx !== null && toIdx !== -1 && fromIdx !== toIdx) {
+      const newItems = [...sortedActive];
+      const [moved] = newItems.splice(fromIdx, 1);
+      newItems.splice(toIdx, 0, moved);
+      const newOrder = newItems.map((i) => i.id);
+      setCustomItemOrder(newOrder);
+      setSmartSortMode("custom");
+      if (hapticsEnabled) triggerHaptic("light");
+    }
+
+    setDraggedItemId(null);
+    setDragOverIndex(null);
+    activeDragElement.current = null;
+  }, [draggedItemId, dragOverIndex, sortedActive, setCustomItemOrder, setSmartSortMode, hapticsEnabled]);
+
+  // Share list snapshot handler
+  const handleShareList = async () => {
+    if (hapticsEnabled) triggerHaptic("medium");
+    setIsSharing(true);
+    try {
+      const payloads = activeItems.map((i) => ({
+        name: i.name,
+        quantity: i.quantity,
+        unit: i.unit,
+        category: i.category,
+        price: i.price,
+        currency_code: i.currency_code,
+        is_purchased: i.is_purchased,
+      }));
+      const res = await api.createShareSnapshot(
+        language === "uz" ? "Mating xaridlar ro'yxati" : "Список покупок Mating",
+        payloads
+      );
+      setShareSnapshot({ token: res.token, url: res.share_url, count: res.item_count });
+
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: "Mating — Список покупок",
+            text: `Список покупок (${res.item_count} поз.):\n` + activeItems.slice(0, 5).map((i) => `• ${i.name} ${i.quantity} ${i.unit}`).join("\n"),
+            url: res.share_url,
+          });
+        } catch {}
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(res.share_url);
+        showUndoToast("share", language === "uz" ? "Havola nusxalandi!" : "Ссылка скопирована!");
+      }
+    } catch (err) {
+      console.error("Share error:", err);
+    } finally {
+      setIsSharing(false);
+    }
+  };
 
   return (
     <div style={{ paddingTop: 8, position: "relative" }}>
@@ -807,63 +988,127 @@ export const ListScreen: React.FC = () => {
         </div>
       )}
 
-      {/* Active Items List: Grouped sections or flat list (#73) */}
-      {groupedSections ? (
-        groupedSections.map(([catName, catItems]) => (
-          <div key={catName} className="category-section" style={{ marginTop: 12 }}>
-            <div className="section-sticky-header">{catName} ({catItems.length})</div>
-            {catItems.map((item) => (
-              <SwipeableItem
-                key={item.id}
-                item={item}
-                onSwipeRight={handleToggle}
-                onSwipeLeft={handleDelete}
-                hapticsEnabled={hapticsEnabled}
-                swipeEnabled={swipeEnabled}
-                isExiting={exitingIds.has(item.id)}
-              >
-                <ItemRow
-                  item={item}
-                  language={language}
-                  onToggle={handleToggle}
-                  onDelete={handleDelete}
-                  onOpenCtx={handleOpenCtx}
-                  onOpenEdit={handleOpenEdit}
-                  hapticsEnabled={hapticsEnabled}
-                  longPressEnabled={longPressEnabled}
-                  longPressDuration={longPressDuration}
-                  isExiting={exitingIds.has(item.id)}
-                />
-              </SwipeableItem>
-            ))}
+      {/* Smart Sort Toolbar & Share */}
+      {!isLoading && items.length > 0 && (
+        <div className="smart-sort-bar">
+          <div className="smart-sort-select-wrap glass">
+            <svg viewBox="0 0 24 24" className="smart-sort-icon">
+              <path d="M3 6h18M6 12h12M9 18h6" />
+            </svg>
+            <select
+              className="smart-sort-select"
+              value={smartSortMode}
+              onChange={(e) => {
+                if (hapticsEnabled) triggerHaptic("selection");
+                setSmartSortMode(e.target.value as SmartSortMode);
+              }}
+              aria-label="Сортировка"
+            >
+              <option value="default">
+                {language === "uz" ? "Odatiy tartib" : "По умолчанию"}
+              </option>
+              <option value="category">
+                {language === "uz" ? "Kategoriya bo'yicha" : "По категории"}
+              </option>
+              <option value="price">
+                {language === "uz" ? "Avval qimmatlari" : "Сначала дорогие"}
+              </option>
+              <option value="name">
+                {language === "uz" ? "Nomi bo'yicha (A-Z)" : "По названию (А-Я)"}
+              </option>
+              <option value="recent">
+                {language === "uz" ? "Avval yangilari" : "Сначала новые"}
+              </option>
+              <option value="custom">
+                {language === "uz" ? "O'z tartibingiz (Drag)" : "Свой порядок (Drag)"}
+              </option>
+            </select>
           </div>
-        ))
-      ) : (
-        filteredActive.map((item) => (
-          <SwipeableItem
-            key={item.id}
-            item={item}
-            onSwipeRight={handleToggle}
-            onSwipeLeft={handleDelete}
-            hapticsEnabled={hapticsEnabled}
-            swipeEnabled={swipeEnabled}
-            isExiting={exitingIds.has(item.id)}
+
+          <button
+            type="button"
+            className="share-list-btn glass press"
+            onClick={handleShareList}
+            disabled={isSharing || activeItems.length === 0}
+            title="Поделиться списком"
           >
-            <ItemRow
-              item={item}
-              language={language}
-              onToggle={handleToggle}
-              onDelete={handleDelete}
-              onOpenCtx={handleOpenCtx}
-              onOpenEdit={handleOpenEdit}
-              hapticsEnabled={hapticsEnabled}
-              longPressEnabled={longPressEnabled}
-              longPressDuration={longPressDuration}
-              isExiting={exitingIds.has(item.id)}
-            />
-          </SwipeableItem>
-        ))
+            <svg viewBox="0 0 24 24" style={{ width: 15, height: 15 }}>
+              <circle cx="18" cy="5" r="3" />
+              <circle cx="6" cy="12" r="3" />
+              <circle cx="18" cy="19" r="3" />
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+            </svg>
+            <span>{isSharing ? "..." : language === "uz" ? "Ulashish" : "Поделиться"}</span>
+          </button>
+        </div>
       )}
+
+      {/* Active Items List: Grouped sections or flat list (#73) */}
+      <div className="active-list-container">
+        {groupedSections ? (
+          groupedSections.map(([catName, catItems]) => (
+            <div key={catName} className="category-section" style={{ marginTop: 12 }}>
+              <div className="section-sticky-header">{catName} ({catItems.length})</div>
+              {catItems.map((item) => (
+                <SwipeableItem
+                  key={item.id}
+                  item={item}
+                  onSwipeRight={handleToggle}
+                  onSwipeLeft={handleDelete}
+                  hapticsEnabled={hapticsEnabled}
+                  swipeEnabled={swipeEnabled}
+                  isExiting={exitingIds.has(item.id)}
+                >
+                  <ItemRow
+                    item={item}
+                    language={language}
+                    onToggle={handleToggle}
+                    onDelete={handleDelete}
+                    onOpenCtx={handleOpenCtx}
+                    onOpenEdit={handleOpenEdit}
+                    onDragStart={handleStartDrag}
+                    onDragMove={handleDragPointerMove}
+                    onDragEnd={handleDragPointerUp}
+                    hapticsEnabled={hapticsEnabled}
+                    longPressEnabled={longPressEnabled}
+                    longPressDuration={longPressDuration}
+                    isExiting={exitingIds.has(item.id)}
+                  />
+                </SwipeableItem>
+              ))}
+            </div>
+          ))
+        ) : (
+          sortedActive.map((item) => (
+            <SwipeableItem
+              key={item.id}
+              item={item}
+              onSwipeRight={handleToggle}
+              onSwipeLeft={handleDelete}
+              hapticsEnabled={hapticsEnabled}
+              swipeEnabled={swipeEnabled}
+              isExiting={exitingIds.has(item.id)}
+            >
+              <ItemRow
+                item={item}
+                language={language}
+                onToggle={handleToggle}
+                onDelete={handleDelete}
+                onOpenCtx={handleOpenCtx}
+                onOpenEdit={handleOpenEdit}
+                onDragStart={handleStartDrag}
+                onDragMove={handleDragPointerMove}
+                onDragEnd={handleDragPointerUp}
+                hapticsEnabled={hapticsEnabled}
+                longPressEnabled={longPressEnabled}
+                longPressDuration={longPressDuration}
+                isExiting={exitingIds.has(item.id)}
+              />
+            </SwipeableItem>
+          ))
+        )}
+      </div>
 
       {/* Purchased Items Section */}
       {showPurchased && filteredPurchased.length > 0 && (
@@ -996,6 +1241,49 @@ export const ListScreen: React.FC = () => {
           onDelete={() => handleDelete(ctxMenu.item)}
           onClose={handleCloseCtx}
         />
+      )}
+
+      {/* Share Snapshot Modal */}
+      {shareSnapshot && (
+        <>
+          <div className="share-backdrop" onClick={() => setShareSnapshot(null)} />
+          <div className="share-modal glass">
+            <div className="share-modal-header">
+              <h3>{language === "uz" ? "Ro'yxatni ulashish" : "Поделиться списком"}</h3>
+              <button className="share-close-btn" onClick={() => setShareSnapshot(null)}>
+                ✕
+              </button>
+            </div>
+            <p className="share-modal-hint">
+              {language === "uz"
+                ? `Xavfsiz havola yaratildi (${shareSnapshot.count} ta mahsulot):`
+                : `Создана защищенная ссылка (${shareSnapshot.count} поз.):`}
+            </p>
+            <div className="share-link-box glass">
+              <input type="text" readOnly value={shareSnapshot.url} className="share-link-input" />
+              <button
+                type="button"
+                className="share-copy-btn press"
+                onClick={async () => {
+                  if (hapticsEnabled) triggerHaptic("medium");
+                  await navigator.clipboard.writeText(shareSnapshot.url);
+                  showUndoToast("share_copied", language === "uz" ? "Havola nusxalandi!" : "Ссылка скопирована!");
+                }}
+              >
+                {language === "uz" ? "Nusxa" : "Копировать"}
+              </button>
+            </div>
+            <div className="share-modal-actions">
+              <button
+                type="button"
+                className="btn primary press"
+                onClick={() => setShareSnapshot(null)}
+              >
+                {language === "uz" ? "Tushunarli" : "Готово"}
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

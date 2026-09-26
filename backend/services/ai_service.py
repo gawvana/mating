@@ -115,9 +115,9 @@ UNIT_MAP: dict[str, str] = {
     "л": "л", "литр": "л", "литра": "л", "литров": "л", "l": "л", "liter": "л",
     "кг": "кг", "кило": "кг", "килограмм": "кг", "килограмма": "кг", "килограммов": "кг", "kg": "кг",
     "г": "г", "грамм": "г", "грамма": "г", "граммов": "г", "g": "г",
-    "шт": "шт", "штука": "шт", "штуки": "шт", "штук": "шт", "pcs": "шт", "dona": "шт",
+    "шт": "шт", "штука": "шт", "штуки": "шт", "штук": "шт", "pcs": "шт", "dona": "шт", "ta": "шт",
     "уп": "уп", "упаковка": "уп", "упаковки": "уп", "пачка": "уп", "пачки": "уп",
-    "бут": "бут", "бутылка": "бут", "бутылки": "бут",
+    "бут": "бут", "бутылка": "бут", "бутылки": "бут", "bottle": "бут",
 }
 
 
@@ -126,6 +126,64 @@ def normalize_unit(unit_raw: str | None) -> str:
         return "шт"
     u = unit_raw.lower().strip()
     return UNIT_MAP.get(u, u[:10] if u else "шт")
+
+
+def normalize_canonical_name(raw: str) -> str:
+    """Normalize item name while respecting user language (UZ/RU/EN)."""
+    trimmed = raw.strip()
+    lower = trimmed.lower()
+    is_latin = bool(re.match(r"^[a-zA-Z\s'-]+$", trimmed))
+
+    if is_latin:
+        if re.match(r"^pomid[ro]+l?a?r?$", lower):
+            return "Pomidor"
+        if re.match(r"^bodringl?a?r?$", lower):
+            return "Bodring"
+        if re.match(r"^baql?o?janl?a?r?$", lower):
+            return "Baqlajon"
+        if re.match(r"^qalamirl?a?r?$", lower):
+            return "Qalamir"
+        if re.match(r"^kartoshkal?a?r?$", lower):
+            return "Kartoshka"
+        if re.match(r"^sabzil?a?r?$", lower):
+            return "Sabzi"
+        if re.match(r"^piyozl?a?r?$", lower):
+            return "Piyoz"
+        if re.match(r"^go['`]?shtl?a?r?$", lower):
+            return "Go'sht"
+        if re.match(r"^nonl?a?r?$", lower):
+            return "Non"
+        if re.match(r"^suvl?a?r?$", lower):
+            return "Suv"
+        if re.match(r"^tuxuml?a?r?$", lower):
+            return "Tuxum"
+        if lower == "sut":
+            return "Sut"
+    else:
+        if re.match(r"^помидор[ыа]?$", lower):
+            return "Помидор"
+        if re.match(r"^огур[ецы]+$", lower):
+            return "Огурцы"
+        if re.match(r"^карто[фельшкаы]+$", lower):
+            return "Картошка"
+        if re.match(r"^морков[ькаы]*$", lower):
+            return "Морковь"
+        if lower == "лук":
+            return "Лук"
+        if re.match(r"^баклажан[ы]?$", lower):
+            return "Баклажан"
+        if lower == "перец":
+            return "Перец"
+        if re.match(r"^хлеб[а]?$", lower):
+            return "Хлеб"
+        if re.match(r"^я(?:йц[аоы]?|иц[а]?)$", lower):
+            return "Яйца"
+        if re.match(r"^молок[оа]?$", lower):
+            return "Молоко"
+        if re.match(r"^сыр[ыа]?$", lower):
+            return "Сыр"
+
+    return trimmed[0].upper() + trimmed[1:] if len(trimmed) > 1 else trimmed.upper()
 
 
 def detect_category(name: str) -> str:
@@ -137,14 +195,28 @@ def detect_category(name: str) -> str:
     return "Другое"
 
 
+def interpret_bare_number(num: float) -> float:
+    """Enforces Mating Bare Number Rule:
+    < 1000 defaults to price in thousands (10 -> 10,000 UZS).
+    >= 1000 is exact price.
+    """
+    if num <= 0:
+        return num
+    if num < 1000:
+        return num * 1000.0
+    return num
+
+
 def fast_deterministic_parser(text: str) -> list[AIParsedItem] | None:
-    """Fast deterministic parser for common shopping list patterns:
-    Handles:
-      "Pomidor 15\nBaqlojan 15\nBodring 10"
-      "Pomidor 15, Baqlojan 15, Bodring 10"
-      "Помидор 2 кг 15000\nОгурцы 1 кг 12000"
-      "Хлеб 2 шт за 10000"
-    Returns parsed list if pattern is clean and confident; returns None if input requires LLM.
+    """Fast deterministic parser enforcing Mating Bare Number Rule:
+    - 'Pomidor 10' -> Pomidor, price: 10,000 UZS
+    - 'bodring 10' -> Bodring, price: 10,000 UZS
+    - 'Qalamir 5' -> Qalamir, price: 5,000 UZS
+    - 'Pomidor 2kg' -> Pomidor, qty: 2, unit: кг, price: None
+    - 'Pomidor 2kg 18000' -> Pomidor, qty: 2, unit: кг, price: 18,000 UZS
+    - '10 яиц' -> Яйца, qty: 10, unit: шт
+    - '10kg pomidor' -> Pomidor, qty: 10, unit: кг
+    - '2 молока' -> Молоко, qty: 2, unit: шт
     """
     lines = [part.strip() for part in re.split(r"[\r\n;,]+", text) if part.strip()]
     if not lines:
@@ -153,96 +225,147 @@ def fast_deterministic_parser(text: str) -> list[AIParsedItem] | None:
     items: list[AIParsedItem] = []
 
     for line in lines:
-        clean = re.sub(r"^[\d+.)\-•*]+\s*", "", line).strip()
+        clean = re.sub(r"^(?:\d+[\.\)]|[\-•*+])\s*", "", line).strip()
         if not clean:
             continue
 
-        # Extract explicit price if present: "за 10000", "по 15000", "15000 сум", "12000 uzs", "$10", "15000 руб"
-        price: float | None = None
-        price_match = re.search(r'(?:за|по|price)\s+(\d+(?:[.,]\d+)?)(?:\s*(?:сум|sum|uzs|руб|rub|\$|евро|eur))?\b', clean, re.IGNORECASE)
-        if not price_match:
-            price_match = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:сум|sum|uzs|руб|rub|\$|евро|eur)\b', clean, re.IGNORECASE)
+        # Check for 'k' or 'тыс' or explicit currency
+        explicit_price: float | None = None
+        k_match = re.search(r'(?:(?:за|по|price)\s+)?(\d+(?:[.,]\d+)?)\s*(?:k|к|тыс)\b', clean, re.IGNORECASE)
+        if k_match:
+            explicit_price = float(k_match.group(1).replace(",", ".")) * 1000.0
+            clean = (clean[:k_match.start()] + " " + clean[k_match.end():]).strip()
+        else:
+            price_match = re.search(r'(?:за|по|price)\s+(\d+(?:[\s.,]\d+)?)(?:\s*(?:сум|sum|uzs|руб|rub|\$|евро|eur))?\b', clean, re.IGNORECASE)
+            if not price_match:
+                price_match = re.search(r'(\d+(?:[\s.,]\d+)?)\s*(?:сум|sum|uzs|руб|rub|\$|евро|eur)\b', clean, re.IGNORECASE)
+            if price_match:
+                try:
+                    num_str = re.sub(r"\s+", "", price_match.group(1)).replace(",", ".")
+                    explicit_price = float(num_str)
+                    clean = (clean[:price_match.start()] + " " + clean[price_match.end():]).strip()
+                except ValueError:
+                    pass
 
-        if price_match:
-            try:
-                price = float(price_match.group(1).replace(",", "."))
-                clean = (clean[:price_match.start()] + " " + clean[price_match.end():]).strip()
-            except ValueError:
-                pass
+        # Case 1a: Leading quantity with unit: "10kg pomidor", "2 л молока"
+        m_with_unit = re.match(r"^(\d+(?:[.,]\d+)?)\s*([a-zA-Z\u0430-\u044f\u0410-\u042f\u0451\u0401]{1,6})\s+([a-zA-Z\u0430-\u044f\u0410-\u042f\u0451\u0401\s'-]+)$", clean)
+        if m_with_unit:
+            u = m_with_unit.group(2).lower()
+            if u in UNIT_MAP:
+                qty = float(m_with_unit.group(1).replace(",", "."))
+                raw_name = m_with_unit.group(3).strip()
+                cname = normalize_canonical_name(raw_name)
+                items.append(
+                    AIParsedItem(
+                        name=cname,
+                        quantity=qty,
+                        unit=normalize_unit(u),
+                        category=detect_category(cname),
+                        estimated_price=explicit_price,
+                        confidence=0.95,
+                    )
+                )
+                continue
 
-        # Case 1: Name + Qty + Unit + Price: "Помидор 2 кг 15000"
-        m_full = re.search(r"^([a-zA-Zа-яА-ЯёЁ\s'-]+?)\s+(\d+(?:[.,]\d+)?)\s*([a-zA-Zа-яА-ЯёЁ]{1,6})\s+(\d+(?:[.,]\d+)?)$", clean)
+        # Case 1b: Leading quantity without unit: "10 яиц", "2 молока"
+        m_no_unit = re.match(r"^(\d+(?:[.,]\d+)?)\s+([a-zA-Z\u0430-\u044f\u0410-\u042f\u0451\u0401\s'-]+)$", clean)
+        if m_no_unit:
+            qty = float(m_no_unit.group(1).replace(",", "."))
+            raw_name = m_no_unit.group(2).strip()
+            cname = normalize_canonical_name(raw_name)
+            items.append(
+                AIParsedItem(
+                    name=cname,
+                    quantity=qty,
+                    unit="шт",
+                    category=detect_category(cname),
+                    estimated_price=explicit_price,
+                    confidence=0.94,
+                )
+            )
+            continue
+
+        # Case 2: Name + Qty + Unit + Price: "Pomidor 2kg 18000", "Помидор 2 кг 15000"
+        m_full = re.search(r"^([a-zA-Z\u0430-\u044f\u0410-\u042f\u0451\u0401\s'-]+?)\s+(\d+(?:[.,]\d+)?)\s*([a-zA-Z\u0430-\u044f\u0410-\u042f\u0451\u0401]{1,6})\s+(\d+(?:[\s.,]\d+)?)$", clean)
         if m_full:
             raw_name = m_full.group(1).strip()
             qty = float(m_full.group(2).replace(",", "."))
-            unit = normalize_unit(m_full.group(3))
-            p = float(m_full.group(4).replace(",", "."))
-            if raw_name:
+            cand_unit = m_full.group(3).lower()
+            raw_price_str = re.sub(r"\s+", "", m_full.group(4)).replace(",", ".")
+            p = float(raw_price_str)
+            if raw_name and cand_unit in UNIT_MAP:
+                cname = normalize_canonical_name(raw_name)
+                final_p = explicit_price if explicit_price is not None else (p * 1000.0 if p < 1000 else p)
                 items.append(
                     AIParsedItem(
-                        name=raw_name[0].upper() + raw_name[1:],
+                        name=cname,
                         quantity=qty,
-                        unit=unit,
-                        category=detect_category(raw_name),
-                        estimated_price=price if price is not None else p,
+                        unit=normalize_unit(cand_unit),
+                        category=detect_category(cname),
+                        estimated_price=final_p,
                         confidence=0.96,
                     )
                 )
                 continue
 
-        # Case 2: Name + Qty + Unit: "Молоко 2 л", "Bodring 1 kg"
-        m_qty_unit = re.search(r"^([a-zA-Zа-яА-ЯёЁ\s'-]+?)\s+(\d+(?:[.,]\d+)?)\s*([a-zA-Zа-яА-ЯёЁ]{1,6})$", clean)
+        # Case 3: Name + Qty + Unit: "Pomidor 2kg", "Bodring 1 kg", "Suv 2l", "Yogurt 4 dona"
+        m_qty_unit = re.search(r"^([a-zA-Z\u0430-\u044f\u0410-\u042f\u0451\u0401\s'-]+?)\s+(\d+(?:[.,]\d+)?)\s*([a-zA-Z\u0430-\u044f\u0410-\u042f\u0451\u0401]{1,6})$", clean)
         if m_qty_unit:
             raw_name = m_qty_unit.group(1).strip()
             qty = float(m_qty_unit.group(2).replace(",", "."))
             candidate_unit = m_qty_unit.group(3).lower()
             if candidate_unit in UNIT_MAP:
+                cname = normalize_canonical_name(raw_name)
                 items.append(
                     AIParsedItem(
-                        name=raw_name[0].upper() + raw_name[1:],
+                        name=cname,
                         quantity=qty,
                         unit=normalize_unit(candidate_unit),
-                        category=detect_category(raw_name),
-                        estimated_price=price,
-                        confidence=0.94,
+                        category=detect_category(cname),
+                        estimated_price=explicit_price,
+                        confidence=0.95,
                     )
                 )
                 continue
 
-        # Case 3: Name + Price: "Pomidor 15", "Bodring 10", "Pomidor - 15"
-        m_price = re.search(r"^([a-zA-Zа-яА-ЯёЁ\s'-]+?)\s*[-:]?\s*(\d+(?:[.,]\d+)?)$", clean)
+        # Case 4: Name + Bare Number (Bare Number Rule: 10 -> 10,000 UZS)
+        # "Pomidor 10", "bodring 10", "Baqlajon 10", "Qalamir 5", "Pomidor 18000"
+        m_price = re.search(r"^([a-zA-Z\u0430-\u044f\u0410-\u042f\u0451\u0401\s'-]+?)\s*[-:]?\s*(\d+(?:[\s.,]\d+)?)$", clean)
         if m_price:
             raw_name = m_price.group(1).strip()
-            num = float(m_price.group(2).replace(",", "."))
+            num_str = re.sub(r"\s+", "", m_price.group(2)).replace(",", ".")
+            num = float(num_str)
             if raw_name:
+                cname = normalize_canonical_name(raw_name)
+                final_p = explicit_price if explicit_price is not None else interpret_bare_number(num)
                 items.append(
                     AIParsedItem(
-                        name=raw_name[0].upper() + raw_name[1:],
+                        name=cname,
                         quantity=1.0,
                         unit="шт",
-                        category=detect_category(raw_name),
-                        estimated_price=num if price is None else price,
-                        confidence=0.92,
+                        category=detect_category(cname),
+                        estimated_price=final_p,
+                        confidence=0.93,
                     )
                 )
                 continue
 
-        # Case 4: Plain Name: "Хлеб", "Pomidor"
+        # Case 5: Plain Name: "Хлеб", "Pomidor", "Milk"
         raw_name = clean.strip(" -:–—.")
-        if raw_name and re.match(r"^[a-zA-Zа-яА-ЯёЁ\s'-]+$", raw_name):
+        if raw_name and re.match(r"^[a-zA-Z\u0430-\u044f\u0410-\u042f\u0451\u0401\s'-]+$", raw_name):
+            cname = normalize_canonical_name(raw_name)
             items.append(
                 AIParsedItem(
-                    name=raw_name[0].upper() + raw_name[1:],
+                    name=cname,
                     quantity=1.0,
                     unit="шт",
-                    category=detect_category(raw_name),
-                    estimated_price=price,
+                    category=detect_category(cname),
+                    estimated_price=explicit_price,
                     confidence=0.88,
                 )
             )
             continue
 
-        # If any line failed clean pattern match, fall through to LLM for full comprehension
         return None
 
     return items if len(items) == len(lines) else None
