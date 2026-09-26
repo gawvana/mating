@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from typing import Any
+
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,

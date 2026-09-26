@@ -182,7 +182,7 @@ async def test_clear_purchased(
     """Section 22: Clear purchased soft deletes purchased items but keeps active ones."""
     # Create item 1 (unpurchased)
     await async_client.post("/api/v1/items", json={"name": "Чай", "quantity": 1.0}, headers=auth_header_user1)
-    
+
     # Create item 2 and mark purchased
     item2_res = await async_client.post("/api/v1/items", json={"name": "Кофе", "quantity": 1.0}, headers=auth_header_user1)
     item2_id = item2_res.json()["id"]

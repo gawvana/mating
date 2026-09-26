@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -99,7 +100,7 @@ async def handle_start(message: Message):
     tg_hash = hash_telegram_id(from_user.id)
     async with AsyncSessionLocal() as session:
         user_repo = UserRepository(session)
-        user = await user_repo.get_or_create(
+        await user_repo.get_or_create(
             telegram_id_hash=tg_hash,
             username=from_user.username,
             first_name=from_user.first_name,

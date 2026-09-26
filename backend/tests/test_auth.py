@@ -2,6 +2,7 @@
 
 import json
 import time
+
 import pytest
 from httpx import AsyncClient
 
@@ -13,7 +14,6 @@ from backend.core.security import (
     verify_telegram_init_data,
 )
 from backend.tests.conftest import create_valid_telegram_init_data
-
 
 BOT_TOKEN = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
 

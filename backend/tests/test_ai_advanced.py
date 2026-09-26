@@ -1,5 +1,5 @@
-import pytest
-from backend.services.ai_service import fast_deterministic_parser, ai_service
+from backend.services.ai_service import fast_deterministic_parser
+
 
 def test_fast_deterministic_parser_multilingual():
     text = "Pomidor 15\nBaqlojan 15\nBodring 10"

@@ -33,7 +33,7 @@ def verify_telegram_init_data(
     max_age_seconds: int = 86400,
 ) -> dict[str, Any]:
     """Validate Telegram Mini App initData according to Telegram guidelines.
-    
+
     1. Parse query string
     2. Extract 'hash'
     3. Generate data-check-string with remaining key=value pairs sorted alphabetically

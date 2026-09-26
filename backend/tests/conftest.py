@@ -5,21 +5,18 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-import os
 import time
 import urllib.parse
 from collections.abc import AsyncGenerator
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from backend.api.dependencies import get_current_user
 from backend.api.main import app
-from backend.core.config import settings
-from backend.core.security import hash_telegram_id
 from backend.database.engine import get_db
-from backend.database.models import Base, User
+from backend.database.models import Base
 
 TEST_DB_FILE = "./test_mating.db"
 TEST_DB_URL = f"sqlite+aiosqlite:///{TEST_DB_FILE}"

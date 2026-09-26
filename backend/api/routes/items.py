@@ -70,7 +70,7 @@ async def update_item(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": {"code": "ITEM_NOT_FOUND", "message": "Item not found"}},
         )
-    except OptimisticLockError as e:
+    except OptimisticLockError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={

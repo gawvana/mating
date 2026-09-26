@@ -51,7 +51,7 @@ class User(Base):
         DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
     )
 
-    items: Mapped[list["ShoppingItem"]] = relationship(
+    items: Mapped[list[ShoppingItem]] = relationship(
         "ShoppingItem", back_populates="user", cascade="all, delete-orphan"
     )
 
@@ -91,7 +91,7 @@ class ShoppingItem(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    user: Mapped["User"] = relationship("User", back_populates="items")
+    user: Mapped[User] = relationship("User", back_populates="items")
 
     __table_args__ = (
         UniqueConstraint(

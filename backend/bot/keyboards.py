@@ -5,6 +5,7 @@ All bot UI uses standard Unicode emojis for maximum compatibility across all pla
 from __future__ import annotations
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+
 from backend.core.config import settings
 
 # ── Standard Unicode Emojis ──

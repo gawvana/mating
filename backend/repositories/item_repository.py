@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
+
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -254,13 +255,13 @@ class ItemRepository:
         active_res = await self.session.execute(active_count_stmt)
         active_count = active_res.scalar() or 0
 
-        total_spent = sum(item.price or 0.0 for item in purchased_items)
+        total_spent = sum((item.price or 0.0) * (item.quantity or 1.0) for item in purchased_items)
         categories_map: dict[str, dict[str, Any]] = {}
         for item in purchased_items:
             cat = item.category or "Другое"
             if cat not in categories_map:
                 categories_map[cat] = {"category": cat, "amount": 0.0, "count": 0}
-            categories_map[cat]["amount"] += item.price or 0.0
+            categories_map[cat]["amount"] += (item.price or 0.0) * (item.quantity or 1.0)
             categories_map[cat]["count"] += 1
 
         cat_list = []

@@ -83,7 +83,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     errors = exc.errors()
     first_error = errors[0] if errors else {}
     msg = first_error.get("msg", "Validation error")
-    loc = " -> ".join(str(l) for l in first_error.get("loc", []))
+    loc = " -> ".join(str(loc_elem) for loc_elem in first_error.get("loc", []))
     safe_message = f"Invalid field {loc}: {msg}" if loc else msg
 
     return JSONResponse(

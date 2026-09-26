@@ -10,7 +10,7 @@ import json
 import os
 import re
 import time
-from typing import Any
+
 import httpx
 
 from backend.api.schemas import AIParsedItem, AIParseResponse
@@ -146,7 +146,7 @@ def fast_deterministic_parser(text: str) -> list[AIParsedItem] | None:
       "Хлеб 2 шт за 10000"
     Returns parsed list if pattern is clean and confident; returns None if input requires LLM.
     """
-    lines = [l.strip() for l in re.split(r"[\r\n;,]+", text) if l.strip()]
+    lines = [part.strip() for part in re.split(r"[\r\n;,]+", text) if part.strip()]
     if not lines:
         return None
 
@@ -277,10 +277,9 @@ class AIService:
     )
 
     MODELS_ORDER = [
-        "gemini-3.8-flash",
         "gemini-2.5-flash",
-        "gemini-flash-latest",
         "gemini-2.5-flash-lite",
+        "gemini-flash-latest",
     ]
 
     def __init__(self):

@@ -1,6 +1,7 @@
 """Tests for Telegram Bot webhook authentication and handling."""
 
 from unittest.mock import AsyncMock, patch
+
 import pytest
 from httpx import AsyncClient
 
@@ -30,9 +31,21 @@ async def test_bot_webhook_secret_verification(async_client: AsyncClient):
     with patch("backend.api.routes.bot.dp.feed_update", new_callable=AsyncMock) as mock_feed:
         res3 = await async_client.post(
             "/api/v1/bot/webhook",
-            json={"update_id": 1},
+            json={"update_id": 9991},
             headers={"X-Telegram-Bot-Api-Secret-Token": "super-secret-token-123"},
         )
         assert res3.status_code == 200
         assert res3.json()["ok"] is True
         mock_feed.assert_awaited_once()
+
+        # 4. Replay duplicate update_id -> returns ok without feeding to dispatcher again
+        res4 = await async_client.post(
+            "/api/v1/bot/webhook",
+            json={"update_id": 9991},
+            headers={"X-Telegram-Bot-Api-Secret-Token": "super-secret-token-123"},
+        )
+        assert res4.status_code == 200
+        assert res4.json().get("replayed") is True
+        # feed_update should still only have been awaited once!
+        mock_feed.assert_awaited_once()
+

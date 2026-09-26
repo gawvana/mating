@@ -68,3 +68,28 @@ async def test_monthly_stats_calculation_and_budget(
     assert "Молочные продукты" in categories
     assert categories["Молочные продукты"]["amount"] == 50000.0
     assert categories["Молочные продукты"]["percentage"] == 33.3
+
+
+@pytest.mark.asyncio
+async def test_monthly_stats_quantity_multiplication(
+    async_client: AsyncClient,
+    auth_header_user1: dict[str, str],
+):
+    """Section 26: Price calculation MUST strictly compute line_total = quantity * unit_price."""
+    # Add Item: 3 packs of butter at 25,000 UZS each -> line_total = 75,000 UZS
+    i1 = await async_client.post(
+        "/api/v1/items",
+        json={"name": "Масло", "quantity": 3.0, "unit": "уп", "category": "Молочные продукты", "price": 25000.0},
+        headers=auth_header_user1,
+    )
+    assert i1.status_code == 201
+    await async_client.patch(f"/api/v1/items/{i1.json()['id']}/toggle", json={"version": 1}, headers=auth_header_user1)
+
+    # Fetch stats
+    stats_res = await async_client.get("/api/v1/stats/monthly", headers=auth_header_user1)
+    assert stats_res.status_code == 200
+    data = stats_res.json()
+
+    # The newly purchased item must contribute 3 * 25,000 = 75,000
+    dairy = next(c for c in data["categories"] if c["category"] == "Молочные продукты")
+    assert dairy["amount"] >= 75000.0

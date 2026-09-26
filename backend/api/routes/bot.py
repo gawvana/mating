@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Any
-from fastapi import APIRouter, Header, HTTPException, Request, status
+from typing import Annotated
+
 from aiogram.types import Update
+from fastapi import APIRouter, Header, HTTPException, Request, status
 
 from backend.api.schemas import WebhookSetupResponse
 from backend.bot.bot import dp, get_bot, setup_bot_commands_and_menu
 from backend.core.config import settings
+from backend.core.replay import replay_protector
 
 logger = logging.getLogger("mating.webhook")
 router = APIRouter(prefix="/api/v1/bot", tags=["Telegram Bot Webhook"])
@@ -41,6 +43,13 @@ async def telegram_webhook(
     try:
         data = await request.json()
         update = Update.model_validate(data, context={"bot": bot})
+
+        # Bounded Replay Protection: reject duplicate update_ids
+        replay_key = f"tg_update:{update.update_id}"
+        if not replay_protector.record(replay_key, ttl_seconds=86400):
+            logger.info("Ignoring replayed Telegram update_id=%s", update.update_id)
+            return {"ok": True, "replayed": True}
+
         await dp.feed_update(bot, update)
     except Exception as e:
         logger.error("Error processing update: %s", e)
