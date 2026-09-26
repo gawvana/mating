@@ -52,7 +52,14 @@ async def test_live():
                 "deviceScaleFactor": 2,
                 "mobile": True,
             })
-            await asyncio.sleep(2.5)
+            # Wait up to 10s for live page load
+            for _ in range(25):
+                chk = await send("Runtime.evaluate", {
+                    "expression": "Boolean(document.querySelector('.nav') && document.querySelector('.dock'))"
+                })
+                if chk.get("result", {}).get("value") is True:
+                    break
+                await asyncio.sleep(0.4)
 
             eval_res = await send("Runtime.evaluate", {
                 "expression": """
