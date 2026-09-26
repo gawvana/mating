@@ -5,6 +5,14 @@ import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./styles/design-system.css";
 
+// Handle chunk loading errors during dynamic deployments
+if (typeof window !== "undefined") {
+  window.addEventListener("vite:preloadError", (event) => {
+    console.warn("Vite preload error detected, reloading fresh version...", event);
+    window.location.reload();
+  });
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

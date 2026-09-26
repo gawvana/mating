@@ -14,7 +14,7 @@ export default defineConfig({
     },
   },
   build: {
-    target: "es2022",
+    target: ["es2020", "safari14", "edge88", "firefox78", "chrome87"],
     cssMinify: true,
     minify: "esbuild",
     rollupOptions: {

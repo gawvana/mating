@@ -1,8 +1,20 @@
 import { create } from "zustand";
-import { Language } from "../i18n";
+import { Language, normalizeLanguage } from "../i18n";
 import { triggerHaptic } from "../telegram/telegram";
 
 export type ScreenTab = "list" | "stats" | "settings";
+
+function getInitialTab(): ScreenTab {
+  if (typeof window !== "undefined") {
+    const path = window.location.pathname.toLowerCase();
+    if (path.includes("stats")) return "stats";
+    if (path.includes("settings")) return "settings";
+    const hash = window.location.hash.toLowerCase();
+    if (hash.includes("stats")) return "stats";
+    if (hash.includes("settings")) return "settings";
+  }
+  return "list";
+}
 export type ThemeMode = "auto" | "light" | "dark";
 export type SheetMode = "quick" | "ai";
 
@@ -102,17 +114,24 @@ if (typeof document !== "undefined") {
   if (_initMotion) document.documentElement.classList.add("reduced-motion");
 }
 
-const _initLanguage = (typeof localStorage !== "undefined"
-  ? (localStorage.getItem("mating_lang") as Language | null)
-  : null) ?? "ru";
+const _initLanguage: Language = normalizeLanguage(
+  typeof localStorage !== "undefined" ? localStorage.getItem("mating_lang") : null
+);
 
 const _initCurrency = (typeof localStorage !== "undefined"
   ? (localStorage.getItem("mating_currency") as "UZS" | "RUB" | "USD" | null)
   : null) ?? "UZS";
 
 export const useAppStore = create<AppState>((set, get) => ({
-  activeTab: "list",
+  activeTab: getInitialTab(),
   setActiveTab: (tab) => {
+    if (typeof window !== "undefined" && window.history?.pushState) {
+      const current = window.location.pathname.toLowerCase();
+      const target = tab === "list" ? "/" : `/${tab}`;
+      if (current !== target && (current === "/" || current === "/stats" || current === "/settings")) {
+        window.history.pushState({ tab }, "", target);
+      }
+    }
     set({ activeTab: tab });
   },
 

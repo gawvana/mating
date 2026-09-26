@@ -10,6 +10,13 @@ declare global {
         expand: () => void;
         ready: () => void;
         close: () => void;
+        BackButton?: {
+          isVisible: boolean;
+          onClick: (cb: () => void) => void;
+          offClick: (cb: () => void) => void;
+          show: () => void;
+          hide: () => void;
+        };
         HapticFeedback?: {
           impactOccurred: (style: "light" | "medium" | "heavy" | "rigid" | "soft") => void;
           notificationOccurred: (type: "error" | "success" | "warning") => void;
@@ -20,15 +27,55 @@ declare global {
   }
 }
 
-export function isTelegramWebApp(): boolean {
-  return typeof window !== "undefined" && Boolean(window.Telegram?.WebApp?.initData && window.Telegram.WebApp.initData.length > 0);
-}
-
 export function getTelegramInitData(): string {
-  if (typeof window !== "undefined" && window.Telegram?.WebApp?.initData) {
+  if (typeof window === "undefined") return "";
+
+  // 1. Direct Telegram WebApp SDK object
+  if (window.Telegram?.WebApp?.initData && window.Telegram.WebApp.initData.length > 0) {
     return window.Telegram.WebApp.initData;
   }
+
+  // 2. Hash parameters (#tgWebAppData=...)
+  try {
+    const rawHash = window.location.hash.startsWith("#")
+      ? window.location.hash.slice(1)
+      : window.location.hash;
+    if (rawHash) {
+      const hashParams = new URLSearchParams(rawHash);
+      const tgData = hashParams.get("tgWebAppData");
+      if (tgData) return tgData;
+    }
+
+    // 3. Search query parameters (?tgWebAppData=...)
+    const searchParams = new URLSearchParams(window.location.search);
+    const tgSearchData = searchParams.get("tgWebAppData");
+    if (tgSearchData) return tgSearchData;
+  } catch {}
+
   return "";
+}
+
+export function isTelegramWebApp(): boolean {
+  return getTelegramInitData().length > 0;
+}
+
+export function setupTelegramBackButton(onBack: () => void, isVisible: boolean): () => void {
+  if (typeof window === "undefined" || !window.Telegram?.WebApp?.BackButton) {
+    return () => {};
+  }
+  const bb = window.Telegram.WebApp.BackButton;
+  if (isVisible) {
+    bb.show();
+    bb.onClick(onBack);
+    return () => {
+      try {
+        bb.offClick(onBack);
+      } catch {}
+    };
+  } else {
+    bb.hide();
+    return () => {};
+  }
 }
 
 export function initTelegramApp(): void {

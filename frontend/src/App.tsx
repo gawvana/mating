@@ -10,15 +10,31 @@ import { SettingsScreen } from "./screens/SettingsScreen";
 import { StatsScreen } from "./screens/StatsScreen";
 import { getPendingMutations, removeMutation } from "./state/offlineQueue";
 import { useAppStore } from "./state/useAppStore";
-import { initTelegramApp } from "./telegram/telegram";
+import { initTelegramApp, setupTelegramBackButton } from "./telegram/telegram";
 
 export const App: React.FC = () => {
   const queryClient = useQueryClient();
-  const { activeTab, setOffline, setSyncing } = useAppStore();
+  const { activeTab, setActiveTab, setOffline, setSyncing } = useAppStore();
   const appRef = useRef<HTMLDivElement>(null);
   const aurRef = useRef<HTMLDivElement>(null);
   const scrollLastY = useRef(0);
   const scrollTick = useRef(false);
+
+  // ── Browser back/forward & Telegram BackButton navigation ────────────────
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname.toLowerCase();
+      if (path.includes("stats")) setActiveTab("stats");
+      else if (path.includes("settings")) setActiveTab("settings");
+      else setActiveTab("list");
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [setActiveTab]);
+
+  useEffect(() => {
+    return setupTelegramBackButton(() => setActiveTab("list"), activeTab !== "list");
+  }, [activeTab, setActiveTab]);
 
   // ── One-time initialization ──────────────────────────────────────────────
   useEffect(() => {

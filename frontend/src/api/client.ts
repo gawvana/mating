@@ -40,55 +40,7 @@ function getGuestItems(): ShoppingItem[] {
     const stored = localStorage.getItem(GUEST_ITEMS_KEY);
     if (stored) return JSON.parse(stored);
   } catch {}
-
-  // Initial starter items for first-time web visitors:
-  const initial: ShoppingItem[] = [
-    {
-      id: generateUUID(),
-      user_id: "guest",
-      name: "Помидоры",
-      quantity: 2,
-      unit: "кг",
-      category: "Овощи и фрукты",
-      price: 15000,
-      currency_code: "UZS",
-      is_purchased: false,
-      version: 1,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-    {
-      id: generateUUID(),
-      user_id: "guest",
-      name: "Молоко",
-      quantity: 1,
-      unit: "л",
-      category: "Молочные продукты",
-      price: 12000,
-      currency_code: "UZS",
-      is_purchased: false,
-      version: 1,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-    {
-      id: generateUUID(),
-      user_id: "guest",
-      name: "Хлеб",
-      quantity: 1,
-      unit: "шт",
-      category: "Хлеб и выпечка",
-      price: 5000,
-      currency_code: "UZS",
-      is_purchased: true,
-      purchased_at: new Date().toISOString(),
-      version: 1,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-  ];
-  saveGuestItems(initial);
-  return initial;
+  return [];
 }
 
 function saveGuestItems(items: ShoppingItem[]): void {
@@ -162,12 +114,12 @@ class ApiClient {
       return {
         id: "guest-user",
         telegram_id: 0,
-        username: "web_guest",
-        first_name: "Гость",
+        username: "",
+        first_name: "Пользователь",
         language_code: "ru",
         currency_code: "UZS",
-        city: "Ташкент",
-        monthly_budget: 1000000,
+        city: null,
+        monthly_budget: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -422,9 +374,9 @@ class ApiClient {
         month: month || new Date().getMonth() + 1,
         total_spent: totals.grandTotal,
         currency_code: "UZS",
-        monthly_budget: 1000000,
-        budget_remaining: Math.max(0, 1000000 - totals.grandTotal),
-        budget_usage_percent: Math.min(100, Math.round((totals.grandTotal / 1000000) * 100)),
+        monthly_budget: null,
+        budget_remaining: null,
+        budget_usage_percent: null,
         items_purchased_count: purchased.length,
         active_items_count: items.length - purchased.length,
         categories,

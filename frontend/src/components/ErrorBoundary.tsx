@@ -64,7 +64,7 @@ export class ErrorBoundary extends Component<Props, State> {
             ⚠️
           </div>
           <h2 style={{ fontSize: "20px", fontWeight: "700", margin: "0 0 8px 0" }}>
-            {this.props.fallbackTitle || "Что-то пошло не так"}
+            {this.props.fallbackTitle || "Mating не удалось загрузить"}
           </h2>
           <p
             style={{
@@ -75,14 +75,14 @@ export class ErrorBoundary extends Component<Props, State> {
               lineHeight: 1.4,
             }}
           >
-            {this.props.fallbackMessage || "Произошла непредвиденная ошибка интерфейса. Попробуйте перезагрузить."}
+            {this.props.fallbackMessage || "Произошла непредвиденная ошибка интерфейса. Нажмите кнопку ниже для повторной попытки."}
           </p>
           <button
             onClick={this.handleReset}
             className="btn btn-p press"
             style={{ minWidth: "160px", padding: "12px 20px" }}
           >
-            {this.props.retryLabel || "Перезагрузить"}
+            {this.props.retryLabel || "[Повторить]"}
           </button>
         </div>
       );

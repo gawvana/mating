@@ -1,6 +1,6 @@
 export type Language = "ru" | "uz" | "en";
 
-export const translations = {
+const rawTranslations = {
   ru: {
     appTitle: "Mating",
     tabList: "Список",
@@ -317,6 +317,24 @@ export const translations = {
     catOther: "Other",
   },
 };
+
+export type TranslationBundle = typeof rawTranslations.ru;
+
+export function normalizeLanguage(lang?: string | null): Language {
+  if (!lang) return "ru";
+  const lower = lang.toLowerCase().trim();
+  if (lower.startsWith("uz")) return "uz";
+  if (lower.startsWith("en")) return "en";
+  return "ru";
+}
+
+export const translations: Record<string, TranslationBundle> = new Proxy(rawTranslations as any, {
+  get(target, prop: string) {
+    if (prop in target) return target[prop];
+    const normalized = normalizeLanguage(prop);
+    return target[normalized] || target.ru;
+  },
+});
 
 export function formatCurrency(amount: number, currency: string = "UZS", lang: Language = "ru"): string {
   try {
