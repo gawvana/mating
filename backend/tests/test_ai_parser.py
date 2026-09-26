@@ -120,3 +120,73 @@ def test_multiline_uzbek_shopping_list():
 
     assert items[3].name == "Qalamir"
     assert items[3].estimated_price == 5000.0
+
+
+def test_space_delimited_batch_uzbek():
+    """Test space-delimited batch parsing without newlines:
+    'Pomidor 10 bodring 10 Baqlajon 10 Qalamir 5' -> 4 items.
+    """
+    raw = "Pomidor 10 bodring 10 Baqlajon 10 Qalamir 5"
+    items = fast_deterministic_parser(raw)
+    assert items is not None and len(items) == 4
+
+    assert items[0].name == "Pomidor"
+    assert items[0].estimated_price == 10000.0
+    assert items[0].category == "Овощи и фрукты"
+
+    assert items[1].name == "Bodring"
+    assert items[1].estimated_price == 10000.0
+
+    assert items[2].name == "Baqlajon"
+    assert items[2].estimated_price == 10000.0
+
+    assert items[3].name == "Qalamir"
+    assert items[3].estimated_price == 5000.0
+
+
+def test_qalampir_typo_and_correct_variants():
+    """Verify both Qalampir and Qalamir are recognized with 5000 UZS price and correct category."""
+    items_correct = fast_deterministic_parser("Qalampir 5")
+    assert items_correct is not None and len(items_correct) == 1
+    assert items_correct[0].name == "Qalampir"
+    assert items_correct[0].estimated_price == 5000.0
+    assert items_correct[0].category == "Овощи и фрукты"
+
+    items_typo = fast_deterministic_parser("Qalamir 5")
+    assert items_typo is not None and len(items_typo) == 1
+    assert items_typo[0].name == "Qalamir"
+    assert items_typo[0].estimated_price == 5000.0
+    assert items_typo[0].category == "Овощи и фрукты"
+
+
+def test_uzbek_cyrillic_unicode_support():
+    """Verify Uzbek Cyrillic letters (ў, қ, ғ, ҳ) and space-batch parsing."""
+    raw = "Помидор 10 бодринг 10 бақлажон 10 қалампир 5"
+    items = fast_deterministic_parser(raw)
+    assert items is not None and len(items) == 4
+
+    assert items[0].name == "Помидор"
+    assert items[0].estimated_price == 10000.0
+
+    assert items[1].name == "Бодринг"
+    assert items[1].estimated_price == 10000.0
+
+    assert items[2].name == "Бақлажон"
+    assert items[2].estimated_price == 10000.0
+
+    assert items[3].name == "Қалампир"
+    assert items[3].estimated_price == 5000.0
+
+    # Test Uzbek Cyrillic units: 'дона', 'та'
+    items_dona = fast_deterministic_parser("қатиқ 3 дона")
+    assert items_dona is not None and len(items_dona) == 1
+    assert items_dona[0].name == "Қатиқ"
+    assert items_dona[0].quantity == 3.0
+    assert items_dona[0].unit == "шт"
+
+    items_ta = fast_deterministic_parser("2 та нон")
+    assert items_ta is not None and len(items_ta) == 1
+    assert items_ta[0].name == "Нон"
+    assert items_ta[0].quantity == 2.0
+    assert items_ta[0].unit == "шт"
+

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import logging
+from pathlib import Path
 import secrets
 from datetime import datetime, timezone
 from typing import Any
@@ -16,11 +19,40 @@ from backend.database.engine import get_db
 from backend.database.models import User
 from backend.services.item_service import ItemService
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/v1/share", tags=["Share List"])
 
-# Ephemeral snapshot store with TTL: token -> snapshot data
+DATA_DIR = Path(__file__).resolve().parent.parent.parent.parent / "data"
+SNAPSHOTS_FILE = DATA_DIR / "shared_snapshots.json"
+
+
+def _load_snapshots() -> dict[str, dict[str, Any]]:
+    try:
+        if SNAPSHOTS_FILE.exists():
+            with open(SNAPSHOTS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+    except Exception as exc:
+        logger.warning("Failed to load shared snapshots from %s: %s", SNAPSHOTS_FILE, exc)
+    return {}
+
+
+def _save_snapshots(data: dict[str, dict[str, Any]]) -> None:
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        temp_file = SNAPSHOTS_FILE.with_suffix(".tmp")
+        with open(temp_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        temp_file.replace(SNAPSHOTS_FILE)
+    except Exception as exc:
+        logger.warning("Failed to save shared snapshots to %s: %s", SNAPSHOTS_FILE, exc)
+
+
+# Snapshot store persisted to disk: token -> snapshot data
 # Supports point-in-time read-only snapshots without leaking user credentials
-_shared_snapshots: dict[str, dict[str, Any]] = {}
+_shared_snapshots: dict[str, dict[str, Any]] = _load_snapshots()
 
 
 class SharedItemPayload(BaseModel):
@@ -88,6 +120,7 @@ async def create_share_snapshot(
         "created_at": now,
         "items": [it.model_dump() for it in items_data],
     }
+    _save_snapshots(_shared_snapshots)
 
     base_url = settings.WEBAPP_URL.rstrip("/") if settings.WEBAPP_URL else "https://mating.vercel.app"
     share_url = f"{base_url}/?share={token}"
@@ -139,4 +172,5 @@ async def revoke_shared_snapshot(
         )
 
     del _shared_snapshots[token]
+    _save_snapshots(_shared_snapshots)
     return {"ok": True, "revoked": token}

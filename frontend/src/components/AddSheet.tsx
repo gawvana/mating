@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "../api/client";
+import { api, generateUUID } from "../api/client";
 import { formatCurrency, translations } from "../i18n";
+import { enqueueMutation } from "../state/offlineQueue";
 import { useAppStore } from "../state/useAppStore";
 import { triggerHaptic } from "../telegram/telegram";
-import { AIParsedItem } from "../types";
+import { AIParsedItem, ShoppingItem } from "../types";
 import { calculateTotals, detectCategory, parseShoppingTextDeterministically } from "../utils/localParser";
 
 const UNITS = ["шт", "кг", "г", "л", "мл", "упак"];
@@ -314,6 +315,41 @@ export const AddSheet: React.FC = () => {
       closeSheet();
     },
     onError: (err: any) => {
+      if (typeof navigator !== "undefined" && !navigator.onLine && !editingItem) {
+        const cleanName = name.trim();
+        const numQty = parseFloat(quantity) || 1;
+        const numPrice = price.trim() ? parseFloat(price.replace(",", ".")) : null;
+        enqueueMutation({
+          type: "create",
+          payload: {
+            name: cleanName,
+            quantity: numQty,
+            unit,
+            category,
+            price: numPrice && numPrice > 0 ? numPrice : null,
+          },
+        });
+        queryClient.setQueryData<ShoppingItem[]>(["items"], (old = []) => [
+          {
+            id: generateUUID(),
+            user_id: "local_temp",
+            name: cleanName,
+            quantity: numQty,
+            unit,
+            category,
+            price: numPrice && numPrice > 0 ? numPrice : null,
+            currency_code: "UZS",
+            is_purchased: false,
+            version: 1,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          ...old,
+        ]);
+        if (hapticsEnabled) triggerHaptic("success");
+        closeSheet();
+        return;
+      }
       if (hapticsEnabled) triggerHaptic("error");
       alert(err.message || "Ошибка при сохранении товара");
     },
@@ -338,7 +374,39 @@ export const AddSheet: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ["stats"] });
       closeSheet();
     },
-    onError: (err: any) => {
+    onError: (err: any, itemsToAdd) => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        enqueueMutation({
+          type: "batch_create",
+          payload: itemsToAdd.map((it) => ({
+            name: it.name,
+            quantity: it.quantity,
+            unit: it.unit,
+            category: it.category,
+            price: it.estimated_price,
+          })),
+        });
+        queryClient.setQueryData<ShoppingItem[]>(["items"], (old = []) => [
+          ...itemsToAdd.map((it) => ({
+            id: generateUUID(),
+            user_id: "local_temp",
+            name: it.name,
+            quantity: it.quantity,
+            unit: it.unit,
+            category: it.category,
+            price: it.estimated_price,
+            currency_code: "UZS",
+            is_purchased: false,
+            version: 1,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })),
+          ...old,
+        ]);
+        if (hapticsEnabled) triggerHaptic("success");
+        closeSheet();
+        return;
+      }
       if (hapticsEnabled) triggerHaptic("error");
       alert(err.message || "Ошибка при пакетном добавлении товаров");
     },

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, generateUUID } from "../api/client";
 import { translations } from "../i18n";
+import { enqueueMutation } from "../state/offlineQueue";
 import { useAppStore } from "../state/useAppStore";
 import { triggerHaptic } from "../telegram/telegram";
 import { ShoppingItem } from "../types";
@@ -119,14 +120,58 @@ export const QuickAddBar: React.FC = () => {
 
       return { previousItems };
     },
-    onError: (_err, _raw, context) => {
-      if (context?.previousItems) {
+    onError: (_err, rawInput, context) => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        const trimmed = rawInput.trim();
+        let parsed = parseShoppingTextDeterministically(trimmed);
+        if (!parsed || parsed.length === 0) {
+          parsed = [
+            {
+              name: trimmed,
+              quantity: 1,
+              unit: "шт",
+              category: autoCategory ? detectCategory(trimmed) : "Другое",
+              estimated_price: null,
+              confidence: 0.5,
+            },
+          ];
+        }
+        if (parsed.length === 1) {
+          enqueueMutation({
+            type: "create",
+            payload: {
+              name: parsed[0].name,
+              quantity: parsed[0].quantity,
+              unit: parsed[0].unit,
+              category: autoCategory ? parsed[0].category : "Другое",
+              price: parsed[0].estimated_price,
+              currency_code: currency,
+              raw_input_text: trimmed,
+            },
+          });
+        } else {
+          enqueueMutation({
+            type: "batch_create",
+            payload: parsed.map((p) => ({
+              name: p.name,
+              quantity: p.quantity,
+              unit: p.unit,
+              category: autoCategory ? p.category : "Другое",
+              price: p.estimated_price,
+              currency_code: currency,
+              raw_input_text: trimmed,
+            })),
+          });
+        }
+      } else if (context?.previousItems) {
         queryClient.setQueryData(["items"], context.previousItems);
       }
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["items"] });
-      queryClient.invalidateQueries({ queryKey: ["stats"] });
+      if (typeof navigator !== "undefined" && navigator.onLine) {
+        queryClient.invalidateQueries({ queryKey: ["items"] });
+        queryClient.invalidateQueries({ queryKey: ["stats"] });
+      }
     },
   });
 

@@ -59,6 +59,37 @@ export function isTelegramWebApp(): boolean {
   return getTelegramInitData().length > 0;
 }
 
+export function getTelegramStartParam(): string {
+  if (typeof window === "undefined") return "";
+
+  // 1. Direct Telegram WebApp SDK initDataUnsafe.start_param
+  try {
+    const startParam = window.Telegram?.WebApp?.initDataUnsafe?.start_param;
+    if (startParam && typeof startParam === "string") {
+      return startParam;
+    }
+  } catch {}
+
+  // 2. Query parameter: tgWebAppStartParam, start_param, or share
+  try {
+    const searchParams = new URLSearchParams(window.location.search);
+    const param = searchParams.get("tgWebAppStartParam") || searchParams.get("start_param") || searchParams.get("share");
+    if (param) return param;
+  } catch {}
+
+  // 3. Hash parameter: tgWebAppStartParam, start_param, or share
+  try {
+    const rawHash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
+    if (rawHash) {
+      const hashParams = new URLSearchParams(rawHash);
+      const param = hashParams.get("tgWebAppStartParam") || hashParams.get("start_param") || hashParams.get("share");
+      if (param) return param;
+    }
+  } catch {}
+
+  return "";
+}
+
 export function setupTelegramBackButton(onBack: () => void, isVisible: boolean): () => void {
   if (typeof window === "undefined" || !window.Telegram?.WebApp?.BackButton) {
     return () => {};

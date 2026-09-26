@@ -6,10 +6,12 @@ import { BottomDock } from "./components/BottomDock";
 import { NavBar } from "./components/NavBar";
 import { UndoToast } from "./components/UndoToast";
 import { QuickAddBar } from "./components/QuickAddBar";
+import { SharedListModal } from "./components/SharedListModal";
 import { ListScreen } from "./screens/ListScreen";
 import { flushOfflineQueue } from "./state/offlineQueue";
 import { DEFAULT_MOTION_PROFILE, useAppStore } from "./state/useAppStore";
-import { initTelegramApp, setupTelegramBackButton } from "./telegram/telegram";
+import { getTelegramStartParam, initTelegramApp, setupTelegramBackButton } from "./telegram/telegram";
+import { PublicSnapshotResponse } from "./types";
 
 const AIScreen = React.lazy(() =>
   import("./screens/AIScreen").then((m) => ({ default: m.AIScreen }))
@@ -28,17 +30,23 @@ export const App: React.FC = () => {
   const queryClient = useQueryClient();
   const activeTab = useAppStore((s) => s.activeTab);
   const setActiveTab = useAppStore((s) => s.setActiveTab);
+  const isSheetOpen = useAppStore((s) => s.isSheetOpen);
+  const closeSheet = useAppStore((s) => s.closeSheet);
+  const isQuickAddOpen = useAppStore((s) => s.isQuickAddOpen);
+  const closeQuickAdd = useAppStore((s) => s.closeQuickAdd);
   const setOffline = useAppStore((s) => s.setOffline);
   const setSyncing = useAppStore((s) => s.setSyncing);
   const setSyncError = useAppStore((s) => s.setSyncError);
   const motionProfile = useAppStore((s) => s.motionProfile);
+
+  const [sharedSnapshot, setSharedSnapshot] = React.useState<PublicSnapshotResponse | null>(null);
 
   const appRef = useRef<HTMLDivElement>(null);
   const aurRef = useRef<HTMLDivElement>(null);
   const scrollLastY = useRef(0);
   const scrollTick = useRef(false);
 
-  // ── Browser back/forward & Telegram BackButton navigation ────────────────
+  // ── Browser back/forward navigation ──────────────────────────────────────
   useEffect(() => {
     const handlePopState = () => {
       const path = window.location.pathname.toLowerCase();
@@ -52,9 +60,41 @@ export const App: React.FC = () => {
     return () => window.removeEventListener("popstate", handlePopState);
   }, [setActiveTab]);
 
+  // ── Overlay-aware Telegram BackButton ────────────────────────────────────
   useEffect(() => {
-    return setupTelegramBackButton(() => setActiveTab("list"), activeTab !== "list");
-  }, [activeTab, setActiveTab]);
+    const isVisible = !!sharedSnapshot || isSheetOpen || isQuickAddOpen || activeTab !== "list";
+    const handleBack = () => {
+      if (sharedSnapshot) {
+        setSharedSnapshot(null);
+      } else if (isSheetOpen) {
+        closeSheet();
+      } else if (isQuickAddOpen) {
+        closeQuickAdd();
+      } else if (activeTab !== "list") {
+        setActiveTab("list");
+      }
+    };
+    return setupTelegramBackButton(handleBack, isVisible);
+  }, [sharedSnapshot, isSheetOpen, isQuickAddOpen, activeTab, closeSheet, closeQuickAdd, setActiveTab]);
+
+  // ── Deep linking for shared lists ────────────────────────────────────────
+  useEffect(() => {
+    const rawParam = getTelegramStartParam();
+    if (rawParam) {
+      const token = rawParam.replace(/^share_/, "").trim();
+      if (token) {
+        api.getSharedSnapshot(token)
+          .then((res) => {
+            if (res && res.items && res.items.length > 0) {
+              setSharedSnapshot(res);
+            }
+          })
+          .catch((err) => {
+            console.warn("Failed to load shared snapshot via deep link:", err);
+          });
+      }
+    }
+  }, []);
 
   // ── Motion Profile → CSS Custom Properties & Class Synchronization ────────
   useEffect(() => {
@@ -335,6 +375,14 @@ export const App: React.FC = () => {
 
       {/* Soft delete Undo Toast */}
       <UndoToast />
+
+      {/* Shared list snapshot viewer modal */}
+      {sharedSnapshot && (
+        <SharedListModal
+          snapshot={sharedSnapshot}
+          onClose={() => setSharedSnapshot(null)}
+        />
+      )}
     </>
   );
 };

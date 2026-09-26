@@ -58,7 +58,7 @@ function openDB(): Promise<IDBDatabase> {
 }
 
 export async function enqueueMutation(
-  item: Omit<QueuedMutation, "timestamp" | "retryCount" | "status"> & {
+  item: Omit<QueuedMutation, "id" | "timestamp" | "retryCount" | "status"> & {
     id?: string;
     timestamp?: number;
     retryCount?: number;

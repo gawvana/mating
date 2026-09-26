@@ -7,7 +7,7 @@ import secrets
 from typing import Annotated
 
 from aiogram.types import Update
-from fastapi import APIRouter, Header, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request, status
 
 from backend.api.schemas import WebhookSetupResponse
 from backend.bot.bot import dp, get_bot, setup_bot_commands_and_menu
@@ -18,13 +18,22 @@ logger = logging.getLogger("mating.webhook")
 router = APIRouter(prefix="/api/v1/bot", tags=["Telegram Bot Webhook"])
 
 
+async def _process_update_safe(bot, update: Update):
+    try:
+        await dp.feed_update(bot, update)
+    except Exception as e:
+        logger.error("Error processing update in background task: %s", e)
+
+
 @router.post("/webhook")
 async def telegram_webhook(
     request: Request,
+    background_tasks: BackgroundTasks,
     x_telegram_bot_api_secret_token: Annotated[str | None, Header()] = None,
 ):
     """Receive webhook updates from Telegram.
     Strictly validates X-Telegram-Bot-Api-Secret-Token header.
+    Dispatches update to background task returning 200 OK immediately (<20ms).
     """
     bot = get_bot()
     if not bot:
@@ -53,9 +62,10 @@ async def telegram_webhook(
             logger.info("Ignoring replayed Telegram update_id=%s", update.update_id)
             return {"ok": True, "replayed": True}
 
-        await dp.feed_update(bot, update)
+        # Non-blocking async dispatch
+        background_tasks.add_task(_process_update_safe, bot, update)
     except Exception as e:
-        logger.error("Error processing update: %s", e)
+        logger.error("Error parsing update: %s", e)
 
     return {"ok": True}
 

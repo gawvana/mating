@@ -72,42 +72,50 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
         "молоко", "сыр", "творог", "сметана", "масло сливочное", "йогурт", "кефир", "сливки", "ряженка",
         "milk", "cheese", "butter", "cream", "yogurt",
         "qatiq", "sut", "pishloq", "tvorog", "qaymoq",
+        "сут", "қатиқ", "катиқ", "пишлоқ", "пишлок", "қаймоқ", "каймок",
     ],
     "Овощи и фрукты": [
         "картошка", "картофель", "лук", "морковь", "помидор", "томат", "огурец", "яблоко", "банан",
         "апельсин", "чеснок", "зелень", "капуста", "баклажан", "перец", "груша", "лимон", "виноград",
         "potato", "onion", "carrot", "tomato", "cucumber", "apple", "banana",
-        "kartoshka", "piyoz", "sabzi", "pomidor", "bodring", "olma", "baqlajon", "baqlojan",
+        "kartoshka", "piyoz", "sabzi", "pomidor", "bodring", "olma", "baqlajon", "baqlojan", "qalamir", "qalampir",
+        "бодринг", "бақлажон", "баклажон", "қалампир", "калампир", "каламир", "қаламир", "сабзи", "пиёз", "олма",
     ],
     "Мясо и рыба": [
         "мясо", "говядина", "курица", "баранина", "фарш", "рыба", "филе", "колбаса", "сосиски", "стейк",
         "meat", "chicken", "beef", "fish", "sausage",
         "go'sht", "gosht", "tovuq", "baliq", "qazi",
+        "гўшт", "гошт", "товуқ", "товук", "балиқ", "балик", "қази", "кази",
     ],
     "Бакалея": [
         "рис", "гречка", "мука", "сахар", "соль", "макароны", "спагетти", "масло", "чай", "кофе", "крупа",
         "rice", "sugar", "salt", "flour", "pasta", "tea", "coffee",
-        "guruch", "shakar", "tuz", "un", "choy",
+        "guruch", "shakar", "tuz", "un", "choy", "yog", "yog'",
+        "гуруч", "шакар", "туз", "ун", "чой", "ёғ", "ёг",
     ],
     "Хлеб и выпечка": [
         "хлеб", "батон", "лаваш", "булочка", "лепешка", "багет", "круассан",
         "bread", "bun",
         "non", "lavash", "patir",
+        "нон", "патир",
     ],
     "Напитки": [
         "вода", "сок", "кола", "напиток", "пиво", "минералка", "лимонад",
         "water", "juice", "soda", "drink", "beer",
         "suv", "sharbat",
+        "сув", "шарбат",
     ],
     "Сладости": [
         "шоколад", "печенье", "конфеты", "торт", "пирожное", "вафли", "мороженое",
         "chocolate", "candy", "cookie", "cake",
-        "shirinlik", "shokolad",
+        "shirinlik", "shokolad", "muzqaymoq",
+        "ширинлик", "музқаймоқ", "музкаймок",
     ],
     "Хозтовары": [
         "мыло", "салфетки", "бумага", "порошок", "губки", "паста зубная", "шампунь", "пакет",
         "soap", "tissue", "shampoo",
         "sovun", "shampun", "qogoz",
+        "совун", "шампунь", "қоғоз", "коғоз",
     ],
 }
 
@@ -116,8 +124,9 @@ UNIT_MAP: dict[str, str] = {
     "кг": "кг", "кило": "кг", "килограмм": "кг", "килограмма": "кг", "килограммов": "кг", "kg": "кг",
     "г": "г", "грамм": "г", "грамма": "г", "граммов": "г", "g": "г",
     "шт": "шт", "штука": "шт", "штуки": "шт", "штук": "шт", "pcs": "шт", "dona": "шт", "ta": "шт",
+    "дона": "шт", "та": "шт",
     "уп": "уп", "упаковка": "уп", "упаковки": "уп", "пачка": "уп", "пачки": "уп",
-    "бут": "бут", "бутылка": "бут", "бутылки": "бут", "bottle": "бут",
+    "бут": "бут", "бутылка": "бут", "бутылки": "бут", "bottle": "бут", "shisha": "бут", "шиша": "бут",
 }
 
 
@@ -141,6 +150,8 @@ def normalize_canonical_name(raw: str) -> str:
             return "Bodring"
         if re.match(r"^baql?o?janl?a?r?$", lower):
             return "Baqlajon"
+        if re.match(r"^qalampirl?a?r?$", lower):
+            return "Qalampir"
         if re.match(r"^qalamirl?a?r?$", lower):
             return "Qalamir"
         if re.match(r"^kartoshkal?a?r?$", lower):
@@ -160,6 +171,49 @@ def normalize_canonical_name(raw: str) -> str:
         if lower == "sut":
             return "Sut"
     else:
+        # Uzbek Cyrillic canonical map
+        if re.match(r"^[қк]алампир[лар]*$", lower):
+            return "Қалампир"
+        if re.match(r"^[қк]аламир[лар]*$", lower):
+            return "Қалампир"
+        if re.match(r"^бодринг[лар]*$", lower):
+            return "Бодринг"
+        if re.match(r"^ба[қк]лажон[лар]*$", lower):
+            return "Бақлажон"
+        if re.match(r"^сабзи[лар]*$", lower):
+            return "Сабзи"
+        if re.match(r"^пиёз[лар]*$", lower):
+            return "Пиёз"
+        if re.match(r"^г[ўо]шт[лар]*$", lower):
+            return "Гўшт"
+        if re.match(r"^нон[лар]*$", lower):
+            return "Нон"
+        if re.match(r"^сув[лар]*$", lower):
+            return "Сув"
+        if re.match(r"^тухум[лар]*$", lower):
+            return "Тухум"
+        if lower == "сут":
+            return "Сут"
+        if re.match(r"^[қк]ати[қк]$", lower):
+            return "Қатиқ"
+        if re.match(r"^пишло[қк]$", lower):
+            return "Пишлоқ"
+        if re.match(r"^[қк]аймо[қк]$", lower):
+            return "Қаймоқ"
+        if lower == "чой":
+            return "Чой"
+        if lower == "шакар":
+            return "Шакар"
+        if lower == "туз":
+            return "Туз"
+        if lower == "ун":
+            return "Ун"
+        if re.match(r"^[её]ғ$", lower):
+            return "Ёғ"
+        if lower == "гуруч":
+            return "Гуруч"
+
+        # Russian Cyrillic map
         if re.match(r"^помидор[ыа]?$", lower):
             return "Помидор"
         if re.match(r"^огур[ецы]+$", lower):
@@ -182,7 +236,6 @@ def normalize_canonical_name(raw: str) -> str:
             return "Молоко"
         if re.match(r"^сыр[ыа]?$", lower):
             return "Сыр"
-
     return trimmed[0].upper() + trimmed[1:] if len(trimmed) > 1 else trimmed.upper()
 
 
@@ -207,6 +260,85 @@ def interpret_bare_number(num: float) -> float:
     return num
 
 
+CURRENCIES = {
+    "сум", "sum", "uzs", "руб", "rub", "usd", "$", "eur", "евро", "тыс", "k", "к"
+}
+
+PRICE_PREPOSITIONS = {
+    "за", "по", "price", "цена"
+}
+
+
+def split_space_batch(line: str) -> list[str]:
+    words = line.strip().split()
+    if not words:
+        return []
+
+    parsed = []
+    for w in words:
+        clean_w = w.lower().strip(",;.")
+        if re.match(r"^\d+(?:[.,]\d+)?$", clean_w):
+            parsed.append(("NUM", w, float(clean_w.replace(",", "."))))
+        elif re.match(r"^(\d+(?:[.,]\d+)?)([a-zA-Z\u0400-\u04FF]+)$", clean_w):
+            m = re.match(r"^(\d+(?:[.,]\d+)?)([a-zA-Z\u0400-\u04FF]+)$", clean_w)
+            suffix = m.group(2)
+            if suffix in UNIT_MAP:
+                parsed.append(("NUM_UNIT", w, suffix))
+            elif suffix in CURRENCIES:
+                parsed.append(("NUM_CURR", w, suffix))
+            else:
+                parsed.append(("WORD", w, None))
+        elif clean_w in PRICE_PREPOSITIONS:
+            parsed.append(("PREP", w, clean_w))
+        elif clean_w in CURRENCIES:
+            parsed.append(("CURRENCY", w, clean_w))
+        elif clean_w in UNIT_MAP:
+            parsed.append(("UNIT", w, clean_w))
+        else:
+            parsed.append(("WORD", w, clean_w))
+
+    items = []
+    current_tokens = []
+    has_leading_num = False
+    has_name = False
+    has_trailing_num = False
+    has_unit = False
+
+    for i, (tok_type, raw_tok, val) in enumerate(parsed):
+        split_here = False
+        if current_tokens:
+            if (has_trailing_num or (has_name and has_unit)) and tok_type == "WORD":
+                split_here = True
+            elif has_leading_num and has_name and tok_type in ("NUM", "NUM_UNIT"):
+                split_here = True
+
+        if split_here:
+            items.append(" ".join(current_tokens))
+            current_tokens = []
+            has_leading_num = False
+            has_name = False
+            has_trailing_num = False
+            has_unit = False
+
+        current_tokens.append(raw_tok)
+        if tok_type in ("NUM", "NUM_UNIT"):
+            if not has_name:
+                has_leading_num = True
+            else:
+                has_trailing_num = True
+            if tok_type == "NUM_UNIT":
+                has_unit = True
+        elif tok_type == "UNIT":
+            has_unit = True
+        elif tok_type == "WORD":
+            has_name = True
+
+    if current_tokens:
+        items.append(" ".join(current_tokens))
+
+    return items
+
+
 def fast_deterministic_parser(text: str) -> list[AIParsedItem] | None:
     """Fast deterministic parser enforcing Mating Bare Number Rule:
     - 'Pomidor 10' -> Pomidor, price: 10,000 UZS
@@ -217,10 +349,15 @@ def fast_deterministic_parser(text: str) -> list[AIParsedItem] | None:
     - '10 яиц' -> Яйца, qty: 10, unit: шт
     - '10kg pomidor' -> Pomidor, qty: 10, unit: кг
     - '2 молока' -> Молоко, qty: 2, unit: шт
+    - 'Pomidor 10 bodring 10 Baqlajon 10 Qalamir 5' -> 4 items
     """
-    lines = [part.strip() for part in re.split(r"[\r\n;,]+", text) if part.strip()]
-    if not lines:
+    raw_lines = [part.strip() for part in re.split(r"[\r\n;,]+", text) if part.strip()]
+    if not raw_lines:
         return None
+
+    lines: list[str] = []
+    for raw_line in raw_lines:
+        lines.extend(split_space_batch(raw_line))
 
     items: list[AIParsedItem] = []
 
@@ -248,7 +385,7 @@ def fast_deterministic_parser(text: str) -> list[AIParsedItem] | None:
                     pass
 
         # Case 1a: Leading quantity with unit: "10kg pomidor", "2 л молока"
-        m_with_unit = re.match(r"^(\d+(?:[.,]\d+)?)\s*([a-zA-Z\u0430-\u044f\u0410-\u042f\u0451\u0401]{1,6})\s+([a-zA-Z\u0430-\u044f\u0410-\u042f\u0451\u0401\s'-]+)$", clean)
+        m_with_unit = re.match(r"^(\d+(?:[.,]\d+)?)\s*([a-zA-Z\u0400-\u04FF]{1,6})\s+([a-zA-Z\u0400-\u04FF\s'-]+)$", clean)
         if m_with_unit:
             u = m_with_unit.group(2).lower()
             if u in UNIT_MAP:
@@ -268,7 +405,7 @@ def fast_deterministic_parser(text: str) -> list[AIParsedItem] | None:
                 continue
 
         # Case 1b: Leading quantity without unit: "10 яиц", "2 молока"
-        m_no_unit = re.match(r"^(\d+(?:[.,]\d+)?)\s+([a-zA-Z\u0430-\u044f\u0410-\u042f\u0451\u0401\s'-]+)$", clean)
+        m_no_unit = re.match(r"^(\d+(?:[.,]\d+)?)\s+([a-zA-Z\u0400-\u04FF\s'-]+)$", clean)
         if m_no_unit:
             qty = float(m_no_unit.group(1).replace(",", "."))
             raw_name = m_no_unit.group(2).strip()
@@ -286,7 +423,7 @@ def fast_deterministic_parser(text: str) -> list[AIParsedItem] | None:
             continue
 
         # Case 2: Name + Qty + Unit + Price: "Pomidor 2kg 18000", "Помидор 2 кг 15000"
-        m_full = re.search(r"^([a-zA-Z\u0430-\u044f\u0410-\u042f\u0451\u0401\s'-]+?)\s+(\d+(?:[.,]\d+)?)\s*([a-zA-Z\u0430-\u044f\u0410-\u042f\u0451\u0401]{1,6})\s+(\d+(?:[\s.,]\d+)?)$", clean)
+        m_full = re.search(r"^([a-zA-Z\u0400-\u04FF\s'-]+?)\s+(\d+(?:[.,]\d+)?)\s*([a-zA-Z\u0400-\u04FF]{1,6})\s+(\d+(?:[\s.,]\d+)?)$", clean)
         if m_full:
             raw_name = m_full.group(1).strip()
             qty = float(m_full.group(2).replace(",", "."))
@@ -309,7 +446,7 @@ def fast_deterministic_parser(text: str) -> list[AIParsedItem] | None:
                 continue
 
         # Case 3: Name + Qty + Unit: "Pomidor 2kg", "Bodring 1 kg", "Suv 2l", "Yogurt 4 dona"
-        m_qty_unit = re.search(r"^([a-zA-Z\u0430-\u044f\u0410-\u042f\u0451\u0401\s'-]+?)\s+(\d+(?:[.,]\d+)?)\s*([a-zA-Z\u0430-\u044f\u0410-\u042f\u0451\u0401]{1,6})$", clean)
+        m_qty_unit = re.search(r"^([a-zA-Z\u0400-\u04FF\s'-]+?)\s+(\d+(?:[.,]\d+)?)\s*([a-zA-Z\u0400-\u04FF]{1,6})$", clean)
         if m_qty_unit:
             raw_name = m_qty_unit.group(1).strip()
             qty = float(m_qty_unit.group(2).replace(",", "."))
@@ -330,7 +467,7 @@ def fast_deterministic_parser(text: str) -> list[AIParsedItem] | None:
 
         # Case 4: Name + Bare Number (Bare Number Rule: 10 -> 10,000 UZS)
         # "Pomidor 10", "bodring 10", "Baqlajon 10", "Qalamir 5", "Pomidor 18000"
-        m_price = re.search(r"^([a-zA-Z\u0430-\u044f\u0410-\u042f\u0451\u0401\s'-]+?)\s*[-:]?\s*(\d+(?:[\s.,]\d+)?)$", clean)
+        m_price = re.search(r"^([a-zA-Z\u0400-\u04FF\s'-]+?)\s*[-:]?\s*(\d+(?:[\s.,]\d+)?)$", clean)
         if m_price:
             raw_name = m_price.group(1).strip()
             num_str = re.sub(r"\s+", "", m_price.group(2)).replace(",", ".")
@@ -352,7 +489,7 @@ def fast_deterministic_parser(text: str) -> list[AIParsedItem] | None:
 
         # Case 5: Plain Name: "Хлеб", "Pomidor", "Milk"
         raw_name = clean.strip(" -:–—.")
-        if raw_name and re.match(r"^[a-zA-Z\u0430-\u044f\u0410-\u042f\u0451\u0401\s'-]+$", raw_name):
+        if raw_name and re.match(r"^[a-zA-Z\u0400-\u04FF\s'-]+$", raw_name):
             cname = normalize_canonical_name(raw_name)
             items.append(
                 AIParsedItem(

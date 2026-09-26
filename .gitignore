@@ -30,6 +30,7 @@ test_mating.db
 mating.db
 .coverage
 htmlcov/
+data/*.json
 
 # Environments & secrets
 .env

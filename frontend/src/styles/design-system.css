@@ -353,11 +353,12 @@ body.open #app {
 
 .b {
   position: absolute;
-  width: 440px;
-  height: 440px;
+  width: 380px;
+  height: 380px;
   border-radius: 50%;
   background: radial-gradient(closest-side, var(--c), transparent);
-  opacity: .45;
+  opacity: .06;
+  filter: blur(40px);
   translate: 0 calc(var(--sy, 0) * var(--k, -0.1) * 1px);
   animation: dr 16s ease-in-out infinite alternate;
 }
@@ -385,7 +386,7 @@ body.open #app {
   backdrop-filter: blur(var(--blur)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--blur)) saturate(180%);
   border: 1px solid var(--edge);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.4), 0 10px 30px var(--sh);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.25), 0 8px 24px var(--sh);
 }
 
 html.refract .glass {
@@ -397,9 +398,9 @@ html.refract .glass {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  padding: 1.5px;
+  padding: 1px;
   pointer-events: none;
-  background: linear-gradient(var(--ang, 135deg), rgba(255,255,255,.95), rgba(255,255,255,0) 32%, rgba(255,255,255,0) 68%, rgba(255,255,255,.6));
+  background: linear-gradient(var(--ang, 135deg), rgba(255,255,255,.24), rgba(255,255,255,0) 32%, rgba(255,255,255,0) 68%, rgba(255,255,255,.08));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
@@ -439,36 +440,37 @@ html.refract .glass {
 /* ── STICKY GLASS HEADER ── */
 .nav {
   position: sticky;
-  top: calc(10px + env(safe-area-inset-top, 0px));
+  top: calc(8px + env(safe-area-inset-top, 0px));
   z-index: 5;
   width: calc(100% - 24px);
   max-width: 484px;
-  margin: 10px auto 0;
-  height: 52px;
-  border-radius: 26px;
+  margin: 6px auto 0;
+  height: 48px;
+  border-radius: 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 8px 0 18px;
+  padding: 0 6px 0 16px;
+  box-shadow: 0 4px 16px var(--sh);
   transition: height var(--dur-header, .6s) var(--spring), border-radius var(--dur-header, .6s) var(--spring), margin var(--dur-header, .6s) var(--spring), box-shadow .35s;
 }
 
 .nav b {
   font-weight: 800;
-  font-size: 16px;
+  font-size: 15px;
   letter-spacing: -.02em;
   transition: font-size var(--dur-header, .5s) var(--spring);
 }
 
 #app.sc .nav {
-  height: 44px;
-  margin-top: 6px;
-  border-radius: 22px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.22), 0 1px 3px rgba(0, 0, 0, 0.12);
+  height: 42px;
+  margin-top: 4px;
+  border-radius: 21px;
+  box-shadow: 0 4px 16px var(--sh);
 }
 
 #app.sc .nav b {
-  font-size: 14px;
+  font-size: 13.5px;
 }
 
 .nav-brand {
@@ -577,12 +579,14 @@ html.refract .glass {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: var(--n);
+  background: color-mix(in srgb, var(--n) 85%, transparent);
+  border: 1px solid var(--outline);
   color: var(--on-n);
-  border-radius: var(--r3);
-  padding: 12px 18px;
-  margin-top: 14px;
-  margin-bottom: 14px;
+  border-radius: var(--r2);
+  padding: 10px 16px;
+  margin-top: 10px;
+  margin-bottom: 10px;
+  box-shadow: 0 2px 10px var(--sh);
 }
 
 .summary-item {
@@ -1009,16 +1013,16 @@ html.refract .glass {
 .fab {
   display: grid;
   place-items: center;
-  width: 58px;
-  height: 58px;
+  width: 50px;
+  height: 50px;
   margin: 0 4px 10px auto;
-  border-radius: 20px;
+  border-radius: 18px;
   color: var(--on-primary);
   background: color-mix(in srgb, var(--primary) 88%, transparent);
   backdrop-filter: blur(16px) saturate(180%);
   -webkit-backdrop-filter: blur(16px) saturate(180%);
-  border: 1px solid rgba(255,255,255,.35);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 12px 24px color-mix(in srgb, var(--primary) 40%, transparent);
+  border: 1px solid rgba(255,255,255,.25);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 8px 18px color-mix(in srgb, var(--primary) 28%, transparent);
   transition:
     transform var(--dur-fab, .55s) var(--spring),
     opacity .3s,
@@ -1035,7 +1039,7 @@ html.refract .glass {
 }
 
 .fab:hover {
-  border-radius: 29px;
+  border-radius: 25px;
 }
 
 .fab:active {
@@ -1044,8 +1048,8 @@ html.refract .glass {
 }
 
 .fab svg {
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   stroke-width: 2.2;
   position: absolute;
   transition: transform .45s var(--spring), opacity .3s;
@@ -1076,19 +1080,20 @@ html.refract .glass {
 /* ── BOTTOM NAV DOCK ── */
 .dock {
   width: 100%;
-  height: 64px;
-  border-radius: 32px;
+  height: 56px;
+  border-radius: 28px;
   display: flex;
-  padding: 6px;
+  padding: 4px;
   touch-action: none;
   user-select: none;
   transform-origin: 50% 100%;
   position: relative;
+  box-shadow: 0 8px 24px var(--sh);
   transition: height .6s var(--spring), transform .6s var(--spring);
 }
 
 .chrome.min .dock {
-  height: 52px;
+  height: 48px;
   transform: scale(.92);
 }
 
@@ -1101,7 +1106,7 @@ html.refract .glass {
   z-index: 1;
   flex: 1;
   min-width: 0;
-  border-radius: 26px;
+  border-radius: 24px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1146,14 +1151,14 @@ html.refract .glass {
 /* Sliding highlight lens inside dock: supports both --i and --tab-idx */
 .lens {
   position: absolute;
-  top: 6px;
-  bottom: 6px;
-  left: 6px;
-  width: calc((100% - 12px) / var(--tab-count, 5));
-  border-radius: 26px;
-  background: color-mix(in srgb, var(--primary) 16%, var(--glow));
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc((100% - 8px) / var(--tab-count, 5));
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--primary) 14%, var(--glow));
   border: 1px solid var(--edge);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 4px 14px var(--sh);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.4), 0 2px 8px var(--sh);
   transform: translateX(calc(var(--i, var(--tab-idx, 0)) * 100%));
   transition: transform var(--dur-tab, .65s) var(--spring), background .3s;
   pointer-events: none;
@@ -2126,37 +2131,40 @@ html.reduced-motion *::after {
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 48px 16px;
+  padding: 24px 16px;
+  margin: 20px auto 0;
+  max-width: 320px;
 }
 
 .empty-state-icon {
-  width: 56px;
-  height: 56px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: var(--p);
   color: var(--on-p);
   display: grid;
   place-items: center;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
   animation: empty-breathe 4s ease-in-out infinite;
 }
 
 @keyframes empty-breathe {
   0%, 100% { transform: scale(1); }
-  50%      { transform: scale(1.08); }
+  50%      { transform: scale(1.06); }
 }
 
 .empty-state h3 {
-  margin: 0 0 6px;
-  font-size: 18px;
-  font-weight: 800;
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .empty-state p {
   color: var(--muted);
-  font-size: 14px;
-  margin: 0 0 20px;
-  max-width: 30ch;
+  font-size: 13px;
+  margin: 0 0 16px;
+  max-width: 28ch;
+  line-height: 1.4;
 }
 
 /* ── ADAPTIVE MODAL PUSH BLUR ── */
@@ -3427,6 +3435,182 @@ html.perf-full #app.sheet-open {
   display: flex;
   justify-content: flex-end;
 }
+
+/* ── SHARED LIST OVERLAY & MODAL ── */
+.shared-list-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.shared-list-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.shared-list-sheet {
+  position: relative;
+  z-index: 61;
+  width: 100%;
+  max-width: 520px;
+  max-height: 85vh;
+  border-radius: var(--r4) var(--r4) 0 0;
+  padding: 20px 20px calc(24px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 -12px 36px var(--sh);
+  animation: sheet-enter 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.shared-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.shared-list-badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  padding: 3px 8px;
+  border-radius: 999px;
+  display: inline-block;
+  margin-bottom: 4px;
+}
+
+.shared-list-title {
+  font-size: 20px;
+  font-weight: 800;
+  margin: 4px 0 2px;
+  letter-spacing: -0.02em;
+}
+
+.shared-list-meta {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.shared-list-close-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--outline);
+  color: var(--on);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.shared-list-body {
+  overflow-y: auto;
+  flex: 1;
+  max-height: 50vh;
+  margin-bottom: 16px;
+  padding-right: 4px;
+}
+
+.shared-list-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shared-item-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--r2);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--outline);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.shared-item-row.selected {
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+}
+
+.shared-item-check {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1.5px solid var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  color: white;
+  transition: all 0.15s ease;
+}
+
+.shared-item-check.checked {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.shared-item-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.shared-item-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--on);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shared-item-sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.shared-item-cat {
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.shared-item-price {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--on);
+  white-space: nowrap;
+}
+
+.shared-list-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.shared-list-actions .btn {
+  flex: 1;
+  height: 44px;
+  border-radius: var(--r2);
+  font-size: 14px;
+  font-weight: 700;
+}
+
 
 /* ── 5. SETTINGS: ACCENT PALETTE & GLASS MICRO PREVIEW ── */
 .accent-preview-dot {

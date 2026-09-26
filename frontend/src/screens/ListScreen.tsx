@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ConflictError } from "../api/client";
 import { formatCurrency, Language, translations } from "../i18n";
+import { enqueueMutation } from "../state/offlineQueue";
 import { SmartSortMode, useAppStore } from "../state/useAppStore";
 import { triggerHaptic } from "../telegram/telegram";
 import { ShoppingItem } from "../types";
@@ -357,7 +358,7 @@ export const ListScreen: React.FC = () => {
   const queryClient = useQueryClient();
   const language = useAppStore((s) => s.language);
   const showUndoToast = useAppStore((s) => s.showUndoToast);
-  const openSheet = useAppStore((s) => s.openSheet);
+  const openQuickAdd = useAppStore((s) => s.openQuickAdd);
   const openEditSheet = useAppStore((s) => s.openEditSheet);
   const showPurchased = useAppStore((s) => s.showPurchased);
   const confirmDelete = useAppStore((s) => s.confirmDelete);
@@ -390,6 +391,9 @@ export const ListScreen: React.FC = () => {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const dragStartY = useRef(0);
   const activeDragElement = useRef<HTMLElement | null>(null);
+  const containerTopRef = useRef<number>(0);
+  const itemHeightRef = useRef<number>(64);
+  const itemsCountRef = useRef<number>(0);
 
   // Share list state
   const [shareSnapshot, setShareSnapshot] = useState<{ token: string; url: string; count: number } | null>(null);
@@ -520,9 +524,14 @@ export const ListScreen: React.FC = () => {
       });
       return { previousItems };
     },
-    onError: (err, _, context) => {
+    onError: (err, variables, context) => {
       if (err instanceof ConflictError) {
         queryClient.invalidateQueries({ queryKey: ["items"] });
+      } else if (typeof navigator !== "undefined" && !navigator.onLine) {
+        enqueueMutation({
+          type: "toggle",
+          payload: { id: variables.id, version: variables.version },
+        });
       } else if (context?.previousItems) {
         queryClient.setQueryData(["items"], context.previousItems);
       }
@@ -548,8 +557,14 @@ export const ListScreen: React.FC = () => {
       });
       return { previousItems };
     },
-    onError: (_, __, context) => {
-      if (context?.previousItems) {
+    onError: (_err, item, context) => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        enqueueMutation({
+          type: "delete",
+          payload: { id: item.id },
+        });
+        showUndoToast(item.id, item.name);
+      } else if (context?.previousItems) {
         queryClient.setQueryData(["items"], context.previousItems);
       }
       if (hapticsEnabled) triggerHaptic("error");
@@ -728,13 +743,26 @@ export const ListScreen: React.FC = () => {
     return Array.from(map.entries());
   }, [sortedActive, selectedCategory, searchQuery, smartSortMode]);
 
-  // Drag and drop reorder handlers
+  // Drag and drop reorder handlers (60/120 FPS layout-free arithmetic)
   const handleStartDrag = useCallback((itemId: string, e: React.PointerEvent) => {
     if (hapticsEnabled) triggerHaptic("medium");
     setDraggedItemId(itemId);
     dragStartY.current = e.clientY;
     const target = e.currentTarget as HTMLElement;
     activeDragElement.current = target.closest(".swipe-item") as HTMLElement;
+
+    const itemsContainer = document.querySelector(".active-list-container");
+    if (itemsContainer) {
+      const cRect = itemsContainer.getBoundingClientRect();
+      containerTopRef.current = cRect.top;
+      const rows = itemsContainer.querySelectorAll(".swipe-item");
+      itemsCountRef.current = rows.length;
+      if (rows.length > 0) {
+        const firstHeight = (rows[0] as HTMLElement).offsetHeight;
+        if (firstHeight > 0) itemHeightRef.current = firstHeight;
+      }
+    }
+
     try {
       target.setPointerCapture(e.pointerId);
     } catch {}
@@ -749,14 +777,12 @@ export const ListScreen: React.FC = () => {
       activeDragElement.current.classList.add("drag-lift");
     }
 
-    const itemsContainer = document.querySelector(".active-list-container");
-    if (itemsContainer) {
-      const rows = Array.from(itemsContainer.querySelectorAll(".swipe-item"));
-      const hoverIndex = rows.findIndex((row) => {
-        const rect = row.getBoundingClientRect();
-        return e.clientY >= rect.top && e.clientY <= rect.bottom;
-      });
-      if (hoverIndex !== -1 && hoverIndex !== dragOverIndex) {
+    const count = itemsCountRef.current;
+    const h = itemHeightRef.current || 64;
+    const top = containerTopRef.current;
+    if (count > 0 && h > 0) {
+      const hoverIndex = Math.max(0, Math.min(count - 1, Math.floor((e.clientY - top) / h)));
+      if (hoverIndex !== dragOverIndex) {
         setDragOverIndex(hoverIndex);
         if (hapticsEnabled) triggerHaptic("selection");
       }
@@ -981,7 +1007,10 @@ export const ListScreen: React.FC = () => {
             type="button"
             className="btn press"
             style={{ width: "auto", padding: "0 28px" }}
-            onClick={() => openSheet("quick")}
+            onClick={() => {
+              if (hapticsEnabled) triggerHaptic("medium");
+              openQuickAdd();
+            }}
           >
             {t.emptyAddBtn}
           </button>
