@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { Language, normalizeLanguage } from "../i18n";
 import { triggerHaptic } from "../telegram/telegram";
+import { ShoppingItem } from "../types";
 
 export type ScreenTab = "list" | "stats" | "settings";
 
@@ -209,7 +210,9 @@ interface AppState {
   isSheetOpen: boolean;
   sheetMode: SheetMode;
   sheetInitialText: string;
+  editingItem: ShoppingItem | null;
   openSheet: (mode?: SheetMode, initialText?: string) => void;
+  openEditSheet: (item: ShoppingItem) => void;
   closeSheet: () => void;
   setSheetMode: (mode: SheetMode) => void;
 
@@ -219,8 +222,10 @@ interface AppState {
 
   isOffline: boolean;
   isSyncing: boolean;
+  hasSyncError: boolean;
   setOffline: (status: boolean) => void;
   setSyncing: (status: boolean) => void;
+  setSyncError: (hasError: boolean) => void;
 }
 
 // ── Initial Local Storage Readers ──
@@ -448,14 +453,25 @@ export const useAppStore = create<AppState>((set, get) => ({
   isSheetOpen: false,
   sheetMode: "quick",
   sheetInitialText: "",
+  editingItem: null,
   openSheet: (mode = "quick", initialText = "") => {
     if (get().hapticsEnabled) triggerHaptic("medium");
     document.body.classList.add("open");
-    set({ isSheetOpen: true, sheetMode: mode, sheetInitialText: initialText });
+    set({ isSheetOpen: true, sheetMode: mode, sheetInitialText: initialText, editingItem: null });
+  },
+  openEditSheet: (item: ShoppingItem) => {
+    if (get().hapticsEnabled) triggerHaptic("medium");
+    document.body.classList.add("open");
+    set({
+      isSheetOpen: true,
+      sheetMode: "quick",
+      editingItem: item,
+      sheetInitialText: "",
+    });
   },
   closeSheet: () => {
     document.body.classList.remove("open");
-    set({ isSheetOpen: false, sheetInitialText: "" });
+    set({ isSheetOpen: false, sheetInitialText: "", editingItem: null });
   },
   setSheetMode: (sheetMode) => {
     set({ sheetMode });
@@ -467,6 +483,16 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   isOffline: typeof navigator !== "undefined" ? !navigator.onLine : false,
   isSyncing: false,
+  hasSyncError: false,
   setOffline: (isOffline) => set({ isOffline }),
   setSyncing: (isSyncing) => set({ isSyncing }),
+  setSyncError: (hasSyncError) => set({ hasSyncError }),
 }));
+
+export function getEffectiveDuration(key: AnimKey): number {
+  const p = useAppStore.getState().motionProfile;
+  if (!p || p.batterySaver || p.animationStyle === "Minimal") return 0;
+  const s = p[key];
+  if (!s || !s.enabled) return 0;
+  return Math.round(s.duration * ((p.intensity ?? 100) / 100));
+}

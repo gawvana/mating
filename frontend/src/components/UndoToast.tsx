@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { translations } from "../i18n";
@@ -7,15 +7,34 @@ import { triggerHaptic } from "../telegram/telegram";
 
 export const UndoToast: React.FC = () => {
   const queryClient = useQueryClient();
-  const { undoToast, clearUndoToast, language } = useAppStore();
+  const undoToast = useAppStore((s) => s.undoToast);
+  const clearUndoToast = useAppStore((s) => s.clearUndoToast);
+  const language = useAppStore((s) => s.language);
+  const hapticsEnabled = useAppStore((s) => s.hapticsEnabled);
+
   const t = translations[language];
+  const [animVisible, setAnimVisible] = useState(false);
 
   useEffect(() => {
-    if (!undoToast) return;
+    if (!undoToast) {
+      setAnimVisible(false);
+      return;
+    }
+
+    // Trigger spring slide-in on next animation frame
+    const frame = requestAnimationFrame(() => {
+      setAnimVisible(true);
+    });
+
     const timer = setTimeout(() => {
-      clearUndoToast();
+      setAnimVisible(false);
+      setTimeout(clearUndoToast, 350);
     }, 5000);
-    return () => clearTimeout(timer);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timer);
+    };
   }, [undoToast, clearUndoToast]);
 
   const restoreMutation = useMutation({
@@ -23,26 +42,32 @@ export const UndoToast: React.FC = () => {
       return api.restoreItem(id);
     },
     onSuccess: () => {
-      triggerHaptic("success");
+      if (hapticsEnabled) triggerHaptic("success");
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["stats"] });
-      clearUndoToast();
+      setAnimVisible(false);
+      setTimeout(clearUndoToast, 300);
+    },
+    onError: (err: any) => {
+      if (hapticsEnabled) triggerHaptic("error");
+      alert(err.message || "Ошибка при восстановлении товара");
     },
   });
 
   if (!undoToast) return null;
 
   return (
-    <div className="undo-toast" role="alert">
+    <div className={`undo-toast ${animVisible ? "show" : ""}`} role="alert">
       <span>
         {t.deletedToast}: <b>{undoToast.name}</b>
       </span>
       <button
+        type="button"
         className="undo-toast-btn"
         onClick={() => restoreMutation.mutate(undoToast.id)}
         disabled={restoreMutation.isPending}
       >
-        {t.undo}
+        {restoreMutation.isPending ? "..." : t.undo}
       </button>
     </div>
   );

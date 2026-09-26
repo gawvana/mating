@@ -6,15 +6,26 @@ import { BottomDock } from "./components/BottomDock";
 import { NavBar } from "./components/NavBar";
 import { UndoToast } from "./components/UndoToast";
 import { ListScreen } from "./screens/ListScreen";
-import { SettingsScreen } from "./screens/SettingsScreen";
-import { StatsScreen } from "./screens/StatsScreen";
-import { getPendingMutations, removeMutation } from "./state/offlineQueue";
+import { flushOfflineQueue } from "./state/offlineQueue";
 import { DEFAULT_MOTION_PROFILE, useAppStore } from "./state/useAppStore";
 import { initTelegramApp, setupTelegramBackButton } from "./telegram/telegram";
 
+const StatsScreen = React.lazy(() =>
+  import("./screens/StatsScreen").then((m) => ({ default: m.StatsScreen }))
+);
+const SettingsScreen = React.lazy(() =>
+  import("./screens/SettingsScreen").then((m) => ({ default: m.SettingsScreen }))
+);
+
 export const App: React.FC = () => {
   const queryClient = useQueryClient();
-  const { activeTab, setActiveTab, setOffline, setSyncing, motionProfile } = useAppStore();
+  const activeTab = useAppStore((s) => s.activeTab);
+  const setActiveTab = useAppStore((s) => s.setActiveTab);
+  const setOffline = useAppStore((s) => s.setOffline);
+  const setSyncing = useAppStore((s) => s.setSyncing);
+  const setSyncError = useAppStore((s) => s.setSyncError);
+  const motionProfile = useAppStore((s) => s.motionProfile);
+
   const appRef = useRef<HTMLDivElement>(null);
   const aurRef = useRef<HTMLDivElement>(null);
   const scrollLastY = useRef(0);
@@ -61,11 +72,33 @@ export const App: React.FC = () => {
       String(p.hapticFeedback?.enabled ? (p.hapticMode === "Light" ? "1" : "2") : "0")
     );
 
+    // Spring curves
+    const curveMap: Record<string, string> = {
+      snappy: "cubic-bezier(0.34, 1.56, 0.64, 1)",
+      balanced: "cubic-bezier(0.25, 1, 0.5, 1)",
+      soft: "cubic-bezier(0.16, 1, 0.3, 1)",
+      linear: "linear",
+    };
+    root.style.setProperty("--curve-fab", curveMap[p.fabMorph?.curve || "snappy"] || curveMap.snappy);
+    root.style.setProperty("--curve-sheet", curveMap[p.sheetSpring?.curve || "snappy"] || curveMap.snappy);
+    root.style.setProperty("--curve-purchase", curveMap[p.purchaseTransition?.curve || "snappy"] || curveMap.snappy);
+    root.style.setProperty("--curve-tab", curveMap[p.tabIndicator?.curve || "snappy"] || curveMap.snappy);
+    root.style.setProperty("--curve-list", curveMap[p.listAddDelete?.curve || "snappy"] || curveMap.snappy);
+
     // Duration variables
     root.style.setProperty("--dur-fab", `${p.fabMorph?.duration || 450}ms`);
     root.style.setProperty("--dur-sheet", `${p.sheetSpring?.duration || 600}ms`);
     root.style.setProperty("--dur-purchase", `${p.purchaseTransition?.duration || 400}ms`);
+    root.style.setProperty("--dur-total", `${p.animatedTotal?.duration || 400}ms`);
+    root.style.setProperty("--dur-budget", `${p.animatedBudget?.duration || 700}ms`);
     root.style.setProperty("--dur-tab", `${p.tabIndicator?.duration || 650}ms`);
+    root.style.setProperty("--dur-checkbox", `${p.checkboxSpring?.duration || 350}ms`);
+    root.style.setProperty("--dur-swipe", `${p.swipeResistance?.duration || 450}ms`);
+    root.style.setProperty("--dur-longpress", `${p.longPressMenu?.duration || 250}ms`);
+    root.style.setProperty("--dur-edit-morph", `${p.editMorph?.duration || 400}ms`);
+    root.style.setProperty("--dur-status-pill", `${p.statusPill?.duration || 400}ms`);
+    root.style.setProperty("--dur-header", `${p.headerMotion?.duration || 600}ms`);
+    root.style.setProperty("--dur-keyboard", `${p.keyboardSheet?.duration || 350}ms`);
     root.style.setProperty("--dur-list", `${p.listAddDelete?.duration || 350}ms`);
     root.style.setProperty("--motion-intensity", String(p.intensity ?? 100));
 
@@ -129,19 +162,36 @@ export const App: React.FC = () => {
 
     let cleanupPointer: (() => void) | undefined;
     if (window.matchMedia("(pointer: fine)").matches) {
-      const handlePointerMove = (e: PointerEvent) => {
-        const ang = 135 + (e.clientX / innerWidth - 0.5) * 70 + (e.clientY / innerHeight - 0.5) * 40;
-        document.documentElement.style.setProperty("--ang", `${ang}deg`);
+      let pointerFrame: number | null = null;
+      let lastClientX = 0;
+      let lastClientY = 0;
+      let lastTarget: Element | null = null;
 
-        const glassEl = (e.target as Element)?.closest?.(".glass") as HTMLElement | null;
-        if (glassEl) {
-          const r = glassEl.getBoundingClientRect();
-          glassEl.style.setProperty("--mx", `${e.clientX - r.left}px`);
-          glassEl.style.setProperty("--my", `${e.clientY - r.top}px`);
+      const handlePointerMove = (e: PointerEvent) => {
+        lastClientX = e.clientX;
+        lastClientY = e.clientY;
+        lastTarget = e.target as Element;
+
+        if (pointerFrame === null) {
+          pointerFrame = requestAnimationFrame(() => {
+            pointerFrame = null;
+            const ang = 135 + (lastClientX / window.innerWidth - 0.5) * 70 + (lastClientY / window.innerHeight - 0.5) * 40;
+            document.documentElement.style.setProperty("--ang", `${ang}deg`);
+
+            const glassEl = lastTarget?.closest?.(".glass") as HTMLElement | null;
+            if (glassEl) {
+              const r = glassEl.getBoundingClientRect();
+              glassEl.style.setProperty("--mx", `${lastClientX - r.left}px`);
+              glassEl.style.setProperty("--my", `${lastClientY - r.top}px`);
+            }
+          });
         }
       };
       document.addEventListener("pointermove", handlePointerMove, { passive: true });
-      cleanupPointer = () => document.removeEventListener("pointermove", handlePointerMove);
+      cleanupPointer = () => {
+        if (pointerFrame !== null) cancelAnimationFrame(pointerFrame);
+        document.removeEventListener("pointermove", handlePointerMove);
+      };
     }
 
     const compact = localStorage.getItem("mating_compact") === "true";
@@ -189,25 +239,21 @@ export const App: React.FC = () => {
     return () => appEl.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // ── Online / Offline listener & queue replay ─────────────────────────────
+  // ── Online / Offline listener & robust queue replay ─────────────────────────────
   useEffect(() => {
     const handleOnline = async () => {
       setOffline(false);
       setSyncing(true);
       try {
-        const pending = await getPendingMutations();
-        for (const item of pending) {
-          try {
-            if (item.type === "create") {
-              await api.createItem(item.payload);
-            }
-            await removeMutation(item.id);
-          } catch (e) {
-            console.warn("Failed to replay mutation", item.id, e);
-          }
+        const result = await flushOfflineQueue(api);
+        setSyncError(result.hasFailures);
+        if (result.processedCount > 0) {
+          queryClient.invalidateQueries({ queryKey: ["items"] });
+          queryClient.invalidateQueries({ queryKey: ["stats"] });
         }
-        queryClient.invalidateQueries({ queryKey: ["items"] });
-        queryClient.invalidateQueries({ queryKey: ["stats"] });
+      } catch (err) {
+        console.warn("Queue replay error:", err);
+        setSyncError(true);
       } finally {
         setSyncing(false);
       }
@@ -218,11 +264,16 @@ export const App: React.FC = () => {
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
 
+    // Replay pending mutations immediately on mount if online
+    if (typeof navigator !== "undefined" && navigator.onLine) {
+      handleOnline();
+    }
+
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
-  }, [setOffline, setSyncing, queryClient]);
+  }, [setOffline, setSyncing, setSyncError, queryClient]);
 
   return (
     <>
@@ -254,8 +305,10 @@ export const App: React.FC = () => {
           {/* Active Screen */}
           <main className="wrap">
             {activeTab === "list" && <ListScreen />}
-            {activeTab === "stats" && <StatsScreen />}
-            {activeTab === "settings" && <SettingsScreen />}
+            <React.Suspense fallback={<div className="skeleton" style={{ height: 120, margin: "20px 0", borderRadius: "var(--r3)" }} />}>
+              {activeTab === "stats" && <StatsScreen />}
+              {activeTab === "settings" && <SettingsScreen />}
+            </React.Suspense>
           </main>
         </div>
       </div>

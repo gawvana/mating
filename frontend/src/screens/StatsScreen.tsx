@@ -3,9 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { formatCurrency, translations } from "../i18n";
 import { useAppStore } from "../state/useAppStore";
+import { AnimatedCounter } from "./ListScreen";
 
 export const StatsScreen: React.FC = () => {
-  const { language, currency } = useAppStore();
+  const language = useAppStore((s) => s.language);
+  const currency = useAppStore((s) => s.currency);
   const t = translations[language];
 
   const {
@@ -57,10 +59,13 @@ export const StatsScreen: React.FC = () => {
           {t.spentThisMonth}
         </div>
         <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: "-.03em", marginTop: 4, color: "var(--on)" }}>
-          {formatCurrency(stats.total_spent, stats.currency_code || currency, language)}
+          <AnimatedCounter
+            value={stats.total_spent}
+            formatter={(v) => formatCurrency(v, stats.currency_code || currency, language)}
+          />
         </div>
         <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 6, fontWeight: 500 }}>
-          {stats.items_purchased_count} {t.itemsPurchasedLabel}
+          <AnimatedCounter value={stats.items_purchased_count} /> {t.itemsPurchasedLabel}
         </div>
       </div>
 
@@ -98,7 +103,10 @@ export const StatsScreen: React.FC = () => {
             >
               <span>{t.remaining}</span>
               <span>
-                {formatCurrency(stats.budget_remaining || 0, stats.currency_code || currency, language)}
+                <AnimatedCounter
+                  value={stats.budget_remaining || 0}
+                  formatter={(v) => formatCurrency(v, stats.currency_code || currency, language)}
+                />
               </span>
             </div>
           </>

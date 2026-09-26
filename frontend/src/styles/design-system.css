@@ -320,9 +320,10 @@ svg.defs {
   max-width: 100vw;
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   background: var(--bg);
   transform-origin: 50% 0;
-  transition: transform .6s var(--sheet), border-radius .6s var(--sheet), filter .6s var(--sheet);
+  transition: transform .55s var(--sheet);
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
 }
@@ -333,9 +334,6 @@ svg.defs {
 
 body.open #app {
   transform: scale(.93) translateY(12px);
-  border-radius: var(--r5);
-  filter: brightness(.82);
-  overflow: hidden;
 }
 
 .page {
@@ -362,7 +360,6 @@ body.open #app {
   opacity: .45;
   translate: 0 calc(var(--sy, 0) * var(--k, -0.1) * 1px);
   animation: dr 16s ease-in-out infinite alternate;
-  will-change: transform;
 }
 
 @keyframes dr {
@@ -370,7 +367,7 @@ body.open #app {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .b { animation: none !important; }
+  .b { animation: none !important; display: none !important; }
 }
 
 .wrap {
@@ -429,13 +426,14 @@ html.refract .glass {
 
 /* ── SPRING PRESS INTERACTION ── */
 .press {
-  transition: transform .55s var(--spring), filter .3s;
+  touch-action: manipulation;
+  transition: transform .45s var(--spring), opacity .15s;
 }
 
 .press:active {
   transform: scale(.94);
-  filter: brightness(1.08);
-  transition-duration: .15s;
+  opacity: .88;
+  transition-duration: .1s;
 }
 
 /* ── STICKY GLASS HEADER ── */
@@ -691,9 +689,23 @@ html.refract .glass {
   stroke: var(--on-err-c);
 }
 
+.swipe-wrapper {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--r2);
+  margin-bottom: 8px;
+  touch-action: pan-y;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .swipe-item {
   position: relative;
   z-index: 1;
+}
+
+.swipe-item.swiping {
   will-change: transform;
 }
 
@@ -706,12 +718,22 @@ html.refract .glass {
   border-radius: var(--r2);
   background: var(--n);
   color: var(--on-n);
-  transition: transform .4s var(--spring), opacity .3s;
+  transition: transform .4s var(--spring), opacity .3s, box-shadow .3s;
   min-height: 52px;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
-.item-row:active {
-  transform: scale(.98);
+.item-row.pressing {
+  transform: scale(.97);
+  transition: transform .12s ease-out;
+}
+
+.item-row.prelift {
+  transform: scale(1.02);
+  box-shadow: var(--e2);
+  transition: transform .25s var(--spring), box-shadow .25s ease;
 }
 
 /* List enter/exit animations */
@@ -1135,9 +1157,8 @@ html.refract .glass {
 /* Apple-style lift state during active touch drag across dock */
 .dock.lift .lens {
   transform: translateX(calc(var(--i, var(--tab-idx, 0)) * 100%)) scale(1.14, 1.1);
-  background: color-mix(in srgb, var(--primary) 10%, transparent);
-  backdrop-filter: blur(4px) saturate(240%);
-  -webkit-backdrop-filter: blur(4px) saturate(240%);
+  background: color-mix(in srgb, var(--primary) 20%, var(--glow));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.8), 0 6px 20px var(--sh);
 }
 
 /* ── SCRIM ── */
@@ -1145,9 +1166,11 @@ html.refract .glass {
   position: fixed;
   inset: 0;
   z-index: 20;
-  background: rgba(0,0,0,.38);
+  background: rgba(0,0,0,.45);
   opacity: 0;
   pointer-events: none;
+  will-change: opacity;
+  transform: translateZ(0);
   transition: opacity .5s var(--sheet);
 }
 
@@ -1494,6 +1517,37 @@ html.refract .glass {
   margin-top: 1px;
 }
 
+/* Stat progress bar */
+.stat-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--n2, rgba(0, 0, 0, 0.08));
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 10px;
+}
+
+.stat-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--primary);
+  transition: width var(--dur-budget, 0.7s) var(--spring-snappy);
+}
+
+.stat-bar-fill.warn {
+  background: #f59e0b;
+}
+
+.stat-bar-fill.err {
+  background: var(--err, #ef4444);
+  animation: pulse-warn 1.5s infinite;
+}
+
+@keyframes pulse-warn {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+
 /* Intensity slider in settings */
 .motion-slider {
   -webkit-appearance: none;
@@ -1699,12 +1753,27 @@ html.refract .glass {
   font-family: inherit;
 }
 
-/* ── PERFORMANCE TIERS ── */
+/* ── PERFORMANCE TIERS & ADAPTIVE GLASS ── */
 .perf-minimal .b {
   display: none !important;
 }
 
-.perf-minimal .glass {
+.perf-reduced .b {
+  animation: none !important;
+}
+
+.perf-minimal .glass,
+.perf-minimal .fab,
+.perf-minimal .ctx-menu,
+.perf-minimal .sheet,
+.glass-minimal .glass,
+.glass-minimal .fab,
+.glass-minimal .ctx-menu,
+.glass-minimal .sheet,
+.glass-tier-minimal .glass,
+.glass-tier-minimal .fab,
+.glass-tier-minimal .ctx-menu,
+.glass-tier-minimal .sheet {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   background: var(--glass-solid) !important;
@@ -1714,16 +1783,189 @@ html.refract .glass {
   transition: opacity .2s !important;
 }
 
-.glass-reduced .glass {
-  --blur: 12px !important;
-  backdrop-filter: blur(12px) saturate(140%) !important;
-  -webkit-backdrop-filter: blur(12px) saturate(140%) !important;
+.glass-reduced .glass,
+.glass-tier-reduced .glass {
+  --blur: 10px !important;
+  backdrop-filter: blur(10px) saturate(135%) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(135%) !important;
 }
 
-.glass-minimal .glass {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  background: var(--glass-solid) !important;
+.glass-reduced .glass::after,
+.glass-tier-reduced .glass::after,
+.glass-minimal .glass::before,
+.glass-minimal .glass::after,
+.glass-tier-minimal .glass::before,
+.glass-tier-minimal .glass::after {
+  display: none !important;
+}
+
+/* ── REUSABLE GLASSBUTTON PRIMITIVE (.glass-btn) ── */
+.glass-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  font-weight: 700;
+  text-decoration: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  white-space: nowrap;
+  vertical-align: middle;
+  overflow: hidden;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  transform: translateZ(0);
+  transition: transform .45s var(--spring), background-color .2s ease, border-color .2s ease, opacity .15s ease;
+}
+
+.glass-btn__inner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.glass-btn__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25em;
+  height: 1.25em;
+  flex-shrink: 0;
+}
+
+.glass-btn__icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.glass-btn__label {
+  line-height: 1;
+}
+
+.glass-btn--sm { height: 34px; padding: 0 12px; border-radius: 17px; font-size: 13px; }
+.glass-btn--md { height: 42px; padding: 0 18px; border-radius: 21px; font-size: 14px; }
+.glass-btn--lg { height: 50px; padding: 0 24px; border-radius: 25px; font-size: 15px; }
+.glass-btn--icon { width: 42px; height: 42px; padding: 0; border-radius: 50%; }
+
+.glass-btn--glass {
+  background: var(--glass2);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  border-color: var(--edge);
+  color: var(--on);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 4px 14px var(--sh);
+}
+
+.glass-btn--primary {
+  background: var(--primary);
+  color: var(--on-primary);
+  border-color: rgba(255,255,255,.24);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.4), 0 8px 24px color-mix(in srgb, var(--primary) 35%, transparent);
+}
+
+.glass-btn--secondary { background: var(--s); color: var(--on-s); border-color: var(--outline); }
+.glass-btn--tonal { background: var(--p); color: var(--on-p); border-color: rgba(255,255,255,.3); }
+.glass-btn--ghost { background: transparent; color: var(--on); border-color: transparent; }
+.glass-btn--danger { background: var(--err); color: var(--on-err); }
+
+@media (pointer: coarse) {
+  .glass-btn:active:not(:disabled):not(.is-loading) {
+    transform: scale(.97) translateZ(0);
+    opacity: .9;
+    transition-duration: .1s;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .glass-btn:hover:not(:disabled):not(.is-loading) {
+    transform: translateY(-1px);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 8px 22px var(--sh);
+  }
+  .glass-btn:active:not(:disabled):not(.is-loading) {
+    transform: scale(.98) translateY(1px);
+    transition-duration: .1s;
+  }
+}
+
+.glass-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.glass-btn:disabled, .glass-btn[aria-disabled="true"] {
+  opacity: .45;
+  cursor: not-allowed;
+  pointer-events: none;
+  transform: none !important;
+}
+
+.glass-btn.is-loading {
+  cursor: wait;
+  pointer-events: none;
+}
+
+.glass-btn__spinner-slot {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.glass-btn__spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-top-color: currentColor;
+  animation: glass-btn-spin .75s linear infinite;
+}
+
+@keyframes glass-btn-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── CONTEXT MENU SAFE BACKDROP & EXTENSIONS ── */
+.ctx-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 29;
+  background: transparent;
+  touch-action: none;
+}
+
+/* ── CHECKBOX SVG CHECKMARK DRAW-IN ── */
+.item-check svg path {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 0;
+  animation: check-draw var(--dur-checkbox, .35s) var(--spring);
+}
+
+@keyframes check-draw {
+  from { stroke-dashoffset: 24; }
+  to { stroke-dashoffset: 0; }
+}
+
+/* ── BUDGET PULSE FOR OVER-BUDGET ── */
+.stat-bar-fill.warn {
+  background: var(--warn);
+}
+.stat-bar-fill.err {
+  background: var(--err);
+  animation: budget-pulse 2s ease-in-out infinite;
+}
+
+@keyframes budget-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .75; }
 }
 
 .compact-mode .item-row {

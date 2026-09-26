@@ -6,20 +6,30 @@ import { triggerHaptic } from "../telegram/telegram";
 const TABS: ScreenTab[] = ["list", "stats", "settings"];
 
 export const BottomDock: React.FC = () => {
-  const { activeTab, setActiveTab, language, openSheet, closeSheet, isSheetOpen, hapticsEnabled } = useAppStore();
+  // Atomic store selectors for zero unnecessary re-renders
+  const activeTab = useAppStore((s) => s.activeTab);
+  const setActiveTab = useAppStore((s) => s.setActiveTab);
+  const language = useAppStore((s) => s.language);
+  const openSheet = useAppStore((s) => s.openSheet);
+  const closeSheet = useAppStore((s) => s.closeSheet);
+  const isSheetOpen = useAppStore((s) => s.isSheetOpen);
+  const hapticsEnabled = useAppStore((s) => s.hapticsEnabled);
+
   const t = translations[language];
 
   const dockRef = useRef<HTMLElement>(null);
+  const dockRectRef = useRef<{ left: number; width: number } | null>(null);
   const isDragging = useRef(false);
+  const hasDragged = useRef(false);
+  const dockStartX = useRef(0);
   const lastIndex = useRef(-1);
 
   const tabIndex = activeTab === "list" ? 0 : activeTab === "stats" ? 1 : 2;
 
-  // Exact pick() logic from index.html
+  // Cached geometry calculation
   const at = useCallback((clientX: number): number => {
-    const el = dockRef.current;
-    if (!el) return 0;
-    const r = el.getBoundingClientRect();
+    const r = dockRectRef.current;
+    if (!r) return 0;
     const pad = 6;
     const n = 3;
     const raw = Math.floor((clientX - r.left - pad) / ((r.width - 2 * pad) / n));
@@ -28,44 +38,64 @@ export const BottomDock: React.FC = () => {
 
   const handlePointerDown = (e: React.PointerEvent<HTMLElement>) => {
     if (e.button !== 0) return;
-    isDragging.current = true;
     const el = dockRef.current;
-    if (el) {
-      el.classList.add("lift");
+    if (!el) return;
+
+    isDragging.current = true;
+    hasDragged.current = false;
+    dockStartX.current = e.clientX;
+
+    // Cache geometry ONCE at gesture start to avoid layout thrashing during move
+    const rect = el.getBoundingClientRect();
+    dockRectRef.current = { left: rect.left, width: rect.width };
+
+    el.classList.add("lift");
+    try {
       el.setPointerCapture(e.pointerId);
-    }
+    } catch {}
+
     const idx = at(e.clientX);
     lastIndex.current = idx;
-    if (el) {
-      el.style.setProperty("--i", String(idx));
-      el.style.setProperty("--tab-idx", String(idx));
-    }
+    el.style.setProperty("--i", String(idx));
+    el.style.setProperty("--tab-idx", String(idx));
+
     if (hapticsEnabled) triggerHaptic("selection");
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLElement>) => {
-    if (!isDragging.current) return;
+    if (!isDragging.current || !dockRef.current) return;
+
+    if (Math.abs(e.clientX - dockStartX.current) > 6) {
+      hasDragged.current = true;
+    }
+
     const idx = at(e.clientX);
     if (idx !== lastIndex.current) {
       lastIndex.current = idx;
       const el = dockRef.current;
-      if (el) {
-        el.style.setProperty("--i", String(idx));
-        el.style.setProperty("--tab-idx", String(idx));
-      }
+      el.style.setProperty("--i", String(idx));
+      el.style.setProperty("--tab-idx", String(idx));
       if (hapticsEnabled) triggerHaptic("selection");
     }
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e: React.PointerEvent<HTMLElement>) => {
     if (!isDragging.current) return;
     isDragging.current = false;
+
     const el = dockRef.current;
     if (el) {
       el.classList.remove("lift");
     }
+
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {}
+
+    dockRectRef.current = null;
+
     const finalIdx = lastIndex.current;
-    if (finalIdx >= 0 && finalIdx < TABS.length) {
+    if (hasDragged.current && finalIdx >= 0 && finalIdx < TABS.length) {
       if (isSheetOpen) closeSheet();
       setActiveTab(TABS[finalIdx]);
     }
@@ -74,6 +104,8 @@ export const BottomDock: React.FC = () => {
   const handlePointerCancel = () => {
     if (!isDragging.current) return;
     isDragging.current = false;
+    dockRectRef.current = null;
+
     const el = dockRef.current;
     if (el) {
       el.classList.remove("lift");

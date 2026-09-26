@@ -9,51 +9,61 @@ import { SwipeableItem } from "../components/SwipeableItem";
 
 const ALL_CATEGORY = "Все";
 
-// ── Smooth Animated Counter for Numbers ───────────────────────────────────────
+// ── Smooth Animated Counter for Numbers (Direct DOM Mutation, 0 React Rerenders) ──
 export const AnimatedCounter: React.FC<{
   value: number;
   formatter?: (val: number) => string;
 }> = ({ value, formatter }) => {
-  const [current, setCurrent] = useState(value);
-  const frameRef = useRef<number | null>(null);
-  const startVal = useRef(value);
-  const startTime = useRef(0);
+  const motionProfile = useAppStore((s) => s.motionProfile);
+  const isEnabled = motionProfile?.animatedTotal?.enabled ?? true;
+  const isBattery = motionProfile?.batterySaver ?? false;
+  const duration = isEnabled && !isBattery
+    ? Math.round((motionProfile?.animatedTotal?.duration ?? 400) * ((motionProfile?.intensity ?? 100) / 100))
+    : 0;
+
+  const spanRef = useRef<HTMLSpanElement>(null);
+  const prevValRef = useRef(value);
 
   useEffect(() => {
-    startVal.current = current;
-    startTime.current = performance.now();
+    const start = prevValRef.current;
     const target = value;
-    const diff = target - startVal.current;
+    prevValRef.current = target;
 
-    if (Math.abs(diff) < 0.1) {
-      setCurrent(target);
+    if (duration === 0 || start === target || !spanRef.current) {
+      if (spanRef.current) {
+        spanRef.current.textContent = formatter ? formatter(target) : String(target);
+      }
       return;
     }
 
-    const duration = 400; // ms
+    const startTime = performance.now();
+    let frameId: number;
 
     const tick = (now: number) => {
-      const elapsed = now - startTime.current;
+      const elapsed = now - startTime;
       const progress = Math.min(1, elapsed / duration);
       // Spring-like ease-out (exponential)
       const ease = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
-      const nextVal = Math.round(startVal.current + diff * ease);
-      setCurrent(nextVal);
+      const current = Math.round(start + (target - start) * ease);
+
+      if (spanRef.current) {
+        spanRef.current.textContent = formatter ? formatter(current) : String(current);
+      }
 
       if (progress < 1) {
-        frameRef.current = requestAnimationFrame(tick);
+        frameId = requestAnimationFrame(tick);
       } else {
-        setCurrent(target);
+        if (spanRef.current) {
+          spanRef.current.textContent = formatter ? formatter(target) : String(target);
+        }
       }
     };
 
-    frameRef.current = requestAnimationFrame(tick);
-    return () => {
-      if (frameRef.current) cancelAnimationFrame(frameRef.current);
-    };
-  }, [value]);
+    frameId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameId);
+  }, [value, duration, formatter]);
 
-  return <span>{formatter ? formatter(current) : current}</span>;
+  return <span ref={spanRef}>{formatter ? formatter(value) : value}</span>;
 };
 
 // ── Context menu for long press ──────────────────────────────────────────────
@@ -68,49 +78,43 @@ interface CtxMenuProps {
 }
 
 const CtxMenu: React.FC<CtxMenuProps> = React.memo(({ item, top, left, onEdit, onToggle, onDelete, onClose }) => {
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handle = (e: PointerEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    const t = setTimeout(() => document.addEventListener("pointerdown", handle), 50);
-    return () => {
-      clearTimeout(t);
-      document.removeEventListener("pointerdown", handle);
-    };
-  }, [onClose]);
-
   const safeLeft = Math.max(10, Math.min(left, window.innerWidth - 180));
   const safeTop = Math.max(10, Math.min(top, window.innerHeight - 200));
 
   return (
-    <div
-      ref={menuRef}
-      className="ctx-menu"
-      role="menu"
-      aria-label="Действия"
-      style={{ position: "fixed", top: safeTop, left: safeLeft }}
-    >
-      <button className="ctx-menu-item" role="menuitem" onClick={() => { onEdit(); onClose(); }}>
-        <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-        Изменить
-      </button>
-      <button className="ctx-menu-item" role="menuitem" onClick={() => { onToggle(); onClose(); }}>
-        <svg viewBox="0 0 24 24">
-          {item.is_purchased
-            ? <path d="M3 12h18M12 3l9 9-9 9" />
-            : <path d="M20 6L9 17l-5-5" />}
-        </svg>
-        {item.is_purchased ? "Вернуть" : "Купить"}
-      </button>
-      <button className="ctx-menu-item danger" role="menuitem" onClick={() => { onDelete(); onClose(); }}>
-        <svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
-        Удалить
-      </button>
-    </div>
+    <>
+      <div
+        className="ctx-backdrop"
+        onPointerDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onClose();
+        }}
+      />
+      <div
+        className="ctx-menu"
+        role="menu"
+        aria-label="Действия"
+        style={{ position: "fixed", top: safeTop, left: safeLeft, zIndex: 30 }}
+      >
+        <button className="ctx-menu-item" role="menuitem" onClick={() => { onEdit(); onClose(); }}>
+          <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+          Изменить
+        </button>
+        <button className="ctx-menu-item" role="menuitem" onClick={() => { onToggle(); onClose(); }}>
+          <svg viewBox="0 0 24 24">
+            {item.is_purchased
+              ? <path d="M3 12h18M12 3l9 9-9 9" />
+              : <path d="M20 6L9 17l-5-5" />}
+          </svg>
+          {item.is_purchased ? "Вернуть" : "Купить"}
+        </button>
+        <button className="ctx-menu-item danger" role="menuitem" onClick={() => { onDelete(); onClose(); }}>
+          <svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
+          Удалить
+        </button>
+      </div>
+    </>
   );
 });
 CtxMenu.displayName = "CtxMenu";
@@ -134,26 +138,41 @@ const ItemRow: React.FC<ItemRowProps> = React.memo(({
   hapticsEnabled,
 }) => {
   const t = translations[language as keyof typeof translations] || translations.ru;
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const preliftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const popTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFired = useRef(false);
   const pressStartPos = useRef({ x: 0, y: 0 });
+  const [pressStage, setPressStage] = useState<"idle" | "pressing" | "prelift">("idle");
   const [isPurchasing, setIsPurchasing] = useState(false);
+
+  const cancelLongPress = useCallback(() => {
+    if (preliftTimer.current) {
+      clearTimeout(preliftTimer.current);
+      preliftTimer.current = null;
+    }
+    if (popTimer.current) {
+      clearTimeout(popTimer.current);
+      popTimer.current = null;
+    }
+    setPressStage("idle");
+  }, []);
 
   const handlePointerDown = (e: React.PointerEvent) => {
     pressStartPos.current = { x: e.clientX, y: e.clientY };
     longPressFired.current = false;
-    longPressTimer.current = setTimeout(() => {
+    setPressStage("pressing");
+
+    preliftTimer.current = setTimeout(() => {
+      setPressStage("prelift");
+      if (hapticsEnabled) triggerHaptic("light");
+    }, 180);
+
+    popTimer.current = setTimeout(() => {
+      setPressStage("idle");
       longPressFired.current = true;
       if (hapticsEnabled) triggerHaptic("medium");
       onOpenCtx(item, e.clientX, e.clientY);
-    }, 500);
-  };
-
-  const cancelLongPress = () => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
+    }, 480);
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
@@ -181,7 +200,7 @@ const ItemRow: React.FC<ItemRowProps> = React.memo(({
 
   return (
     <div
-      className={`item-row ${item.is_purchased ? "purchased" : ""} ${isPurchasing ? "purchasing" : ""}`}
+      className={`item-row ${item.is_purchased ? "purchased" : ""} ${isPurchasing ? "purchasing" : ""} ${pressStage !== "idle" ? pressStage : ""}`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -247,15 +266,14 @@ ItemRow.displayName = "ItemRow";
 // ── Main ListScreen ───────────────────────────────────────────────────────────
 export const ListScreen: React.FC = () => {
   const queryClient = useQueryClient();
-  const {
-    language,
-    showUndoToast,
-    openSheet,
-    showPurchased,
-    confirmDelete,
-    hapticsEnabled,
-    motionProfile,
-  } = useAppStore();
+  const language = useAppStore((s) => s.language);
+  const showUndoToast = useAppStore((s) => s.showUndoToast);
+  const openSheet = useAppStore((s) => s.openSheet);
+  const openEditSheet = useAppStore((s) => s.openEditSheet);
+  const showPurchased = useAppStore((s) => s.showPurchased);
+  const confirmDelete = useAppStore((s) => s.confirmDelete);
+  const hapticsEnabled = useAppStore((s) => s.hapticsEnabled);
+  const motionProfile = useAppStore((s) => s.motionProfile);
   const t = translations[language] || translations.ru;
 
   const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORY);
@@ -594,7 +612,7 @@ export const ListScreen: React.FC = () => {
           top={ctxMenu.y}
           left={ctxMenu.x}
           onEdit={() => {
-            openSheet("quick", ctxMenu.item.name);
+            openEditSheet(ctxMenu.item);
           }}
           onToggle={() => handleToggle(ctxMenu.item)}
           onDelete={() => handleDelete(ctxMenu.item)}

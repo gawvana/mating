@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -45,6 +45,26 @@ class Settings(BaseSettings):
         "https://web.telegram.org",
         "https://*.telegram.org",
     ]
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> Settings:
+        """Fail-fast validation for critical security settings in production.
+
+        Enforces that WEBHOOK_SECRET is set to a secure, custom secret whenever
+        APP_ENV is 'production'. Rejects empty values and the default placeholder
+        'mating-secret-token'.
+        """
+        if self.is_production:
+            insecure_secrets = {"", "mating-secret-token"}
+            secret = (self.WEBHOOK_SECRET or "").strip()
+            if not secret or secret in insecure_secrets:
+                raise ValueError(
+                    "CRITICAL SECURITY CONFIGURATION ERROR: "
+                    "WEBHOOK_SECRET must be configured with a secure, unique secret token in production environment! "
+                    f"Current value is insecure: {self.WEBHOOK_SECRET!r}. "
+                    "Empty secret or default placeholder 'mating-secret-token' is strictly prohibited."
+                )
+        return self
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod

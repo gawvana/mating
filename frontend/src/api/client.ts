@@ -34,6 +34,7 @@ export function generateUUID(): string {
 
 // ── LOCAL STORAGE GUEST STORE (For standalone web browsing outside Telegram) ──
 const GUEST_ITEMS_KEY = "mating_guest_items";
+const GUEST_DELETED_ITEMS_KEY = "mating_guest_deleted_items";
 
 function getGuestItems(): ShoppingItem[] {
   try {
@@ -46,6 +47,20 @@ function getGuestItems(): ShoppingItem[] {
 function saveGuestItems(items: ShoppingItem[]): void {
   try {
     localStorage.setItem(GUEST_ITEMS_KEY, JSON.stringify(items));
+  } catch {}
+}
+
+function getGuestDeletedItems(): ShoppingItem[] {
+  try {
+    const stored = localStorage.getItem(GUEST_DELETED_ITEMS_KEY);
+    if (stored) return JSON.parse(stored);
+  } catch {}
+  return [];
+}
+
+function saveGuestDeletedItems(items: ShoppingItem[]): void {
+  try {
+    localStorage.setItem(GUEST_DELETED_ITEMS_KEY, JSON.stringify(items));
   } catch {}
 }
 
@@ -294,9 +309,23 @@ class ApiClient {
       const items = getGuestItems();
       const idx = items.findIndex((it) => it.id === id);
       if (idx !== -1) {
-        const deleted = items.splice(idx, 1)[0];
+        const [deleted] = items.splice(idx, 1);
         saveGuestItems(items);
-        return deleted;
+
+        // Soft-delete symmetrically: stamp deleted_at, increment version
+        const now = new Date().toISOString();
+        const softDeletedItem: ShoppingItem = {
+          ...deleted,
+          deleted_at: now,
+          version: (deleted.version || 1) + 1,
+          updated_at: now,
+        };
+
+        const deletedItems = getGuestDeletedItems().filter((it) => it.id !== id);
+        deletedItems.unshift(softDeletedItem);
+        saveGuestDeletedItems(deletedItems);
+
+        return softDeletedItem;
       }
       throw new ApiError("Item not found", "NOT_FOUND", 404);
     }
@@ -307,6 +336,31 @@ class ApiClient {
   }
 
   async restoreItem(id: string): Promise<ShoppingItem> {
+    if (!isTelegramWebApp()) {
+      const deletedItems = getGuestDeletedItems();
+      const idx = deletedItems.findIndex((it) => it.id === id);
+      if (idx !== -1) {
+        const [toRestore] = deletedItems.splice(idx, 1);
+        saveGuestDeletedItems(deletedItems);
+
+        // Restore: clear deleted_at, increment version, update timestamp
+        const now = new Date().toISOString();
+        const restoredItem: ShoppingItem = {
+          ...toRestore,
+          deleted_at: null,
+          version: (toRestore.version || 1) + 1,
+          updated_at: now,
+        };
+
+        const activeItems = getGuestItems();
+        activeItems.unshift(restoredItem);
+        saveGuestItems(activeItems);
+
+        return restoredItem;
+      }
+      throw new ApiError("Item not found in deleted items", "NOT_FOUND", 404);
+    }
+
     return this.request<ShoppingItem>(`/api/v1/items/${id}/restore`, {
       method: "POST",
     });
@@ -316,7 +370,21 @@ class ApiClient {
     if (!isTelegramWebApp()) {
       const items = getGuestItems();
       const active = items.filter((it) => !it.is_purchased);
-      const clearedCount = items.length - active.length;
+      const purchased = items.filter((it) => it.is_purchased);
+      const clearedCount = purchased.length;
+
+      if (clearedCount > 0) {
+        const now = new Date().toISOString();
+        const softDeletedPurchased: ShoppingItem[] = purchased.map((it) => ({
+          ...it,
+          deleted_at: now,
+          version: (it.version || 1) + 1,
+          updated_at: now,
+        }));
+        const existingDeleted = getGuestDeletedItems();
+        saveGuestDeletedItems([...softDeletedPurchased, ...existingDeleted]);
+      }
+
       saveGuestItems(active);
       return { cleared_count: clearedCount };
     }

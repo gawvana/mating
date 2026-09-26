@@ -105,6 +105,7 @@ const rawTranslations = {
     catSweets: "Сладости",
     catHousehold: "Быт",
     catOther: "Другое",
+    estimatedTotal: "Примерно",
   },
   uz: {
     appTitle: "Mating",
@@ -210,6 +211,7 @@ const rawTranslations = {
     catSweets: "Shirinliklar",
     catHousehold: "Maishiy",
     catOther: "Boshqa",
+    estimatedTotal: "Taxminan",
   },
   en: {
     appTitle: "Mating",
@@ -315,6 +317,7 @@ const rawTranslations = {
     catSweets: "Sweets",
     catHousehold: "Household",
     catOther: "Other",
+    estimatedTotal: "Estimated total",
   },
 };
 

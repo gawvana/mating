@@ -23,22 +23,32 @@ const CATEGORIES = [
 
 export const AddSheet: React.FC = () => {
   const queryClient = useQueryClient();
-  const {
-    isSheetOpen,
-    closeSheet,
-    sheetMode,
-    setSheetMode,
-    sheetInitialText,
-    language,
-    hapticsEnabled,
-    autoCategory,
-  } = useAppStore();
+
+  // Atomic selectors for zero unnecessary re-renders
+  const isSheetOpen = useAppStore((s) => s.isSheetOpen);
+  const closeSheet = useAppStore((s) => s.closeSheet);
+  const sheetMode = useAppStore((s) => s.sheetMode);
+  const setSheetMode = useAppStore((s) => s.setSheetMode);
+  const sheetInitialText = useAppStore((s) => s.sheetInitialText);
+  const editingItem = useAppStore((s) => s.editingItem);
+  const language = useAppStore((s) => s.language);
+  const hapticsEnabled = useAppStore((s) => s.hapticsEnabled);
+  const autoCategory = useAppStore((s) => s.autoCategory);
+
   const t = translations[language];
 
   const sheetRef = useRef<HTMLDivElement>(null);
+  const scrimRef = useRef<HTMLDivElement>(null);
+  const appElementRef = useRef<HTMLElement | null>(null);
+  const sheetHeightRef = useRef<number>(400);
+
   const dragStartY = useRef<number | null>(null);
   const dragStartTime = useRef<number>(0);
   const currentDragY = useRef<number>(0);
+  const lastMoveY = useRef<number>(0);
+  const lastMoveTime = useRef<number>(0);
+  const pointerVelocityY = useRef<number>(0);
+
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Quick Add Form state
@@ -66,15 +76,35 @@ export const AddSheet: React.FC = () => {
     }
   }, [sheetInitialText, setSheetMode]);
 
+  // Sync editing item or reset on open
+  useEffect(() => {
+    if (isSheetOpen) {
+      if (editingItem) {
+        setName(editingItem.name || "");
+        setQuantity(String(editingItem.quantity || 1));
+        setUnit(editingItem.unit || "шт");
+        setCategory(editingItem.category || "Овощи и фрукты");
+        setPrice(editingItem.price ? String(editingItem.price) : "");
+        setAiError(null);
+      } else {
+        setName("");
+        setQuantity("1");
+        setUnit("шт");
+        setPrice("");
+        setAiError(null);
+      }
+    }
+  }, [isSheetOpen, editingItem]);
+
   // Auto category detection
   useEffect(() => {
-    if (autoCategory && name.trim().length >= 3) {
+    if (autoCategory && !editingItem && name.trim().length >= 3) {
       const detected = detectCategory(name);
       if (detected && detected !== "Другое") {
         setCategory(detected);
       }
     }
-  }, [name, autoCategory]);
+  }, [name, autoCategory, editingItem]);
 
   // Focus trap, Escape key, and inert management
   useEffect(() => {
@@ -127,17 +157,6 @@ export const AddSheet: React.FC = () => {
     };
   }, [isSheetOpen, closeSheet]);
 
-  // Reset state when opening
-  useEffect(() => {
-    if (isSheetOpen) {
-      setName("");
-      setQuantity("1");
-      setUnit("шт");
-      setPrice("");
-      setAiError(null);
-    }
-  }, [isSheetOpen]);
-
   // Stepper handlers
   const handleQuantityStep = (delta: number) => {
     if (hapticsEnabled) triggerHaptic("selection");
@@ -146,13 +165,23 @@ export const AddSheet: React.FC = () => {
     setQuantity(String(Math.round(next * 10) / 10));
   };
 
-  // Quick add mutation
-  const createItemMutation = useMutation({
+  // Quick save mutation (handles both create and edit)
+  const saveItemMutation = useMutation({
     mutationFn: async () => {
       const cleanName = name.trim();
       if (!cleanName) return;
       const numQty = parseFloat(quantity) || 1;
       const numPrice = price.trim() ? parseFloat(price.replace(",", ".")) : null;
+
+      if (editingItem) {
+        return api.updateItem(editingItem.id, editingItem.version, {
+          name: cleanName,
+          quantity: numQty,
+          unit,
+          category,
+          price: numPrice && numPrice > 0 ? numPrice : null,
+        });
+      }
 
       return api.createItem({
         name: cleanName,
@@ -170,7 +199,7 @@ export const AddSheet: React.FC = () => {
     },
     onError: (err: any) => {
       if (hapticsEnabled) triggerHaptic("error");
-      alert(err.message || "Ошибка при добавлении товара");
+      alert(err.message || "Ошибка при сохранении товара");
     },
   });
 
@@ -270,18 +299,35 @@ export const AddSheet: React.FC = () => {
   const quickPrice = price ? parseFloat(price.replace(",", ".")) : null;
   const quickLineTotal = quickPrice ? quickQty * quickPrice : null;
 
-  // Pointer drag to dismiss header (Apple-like real-time background presentation)
+  // Pointer drag with GPU-composited scrim opacity (NO app.style.filter!)
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     dragStartY.current = e.clientY;
     dragStartTime.current = e.timeStamp;
+    lastMoveY.current = e.clientY;
+    lastMoveTime.current = performance.now();
+    pointerVelocityY.current = 0;
     currentDragY.current = 0;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {}
 
     const sheet = sheetRef.current;
-    const app = document.getElementById("app");
-    if (sheet) sheet.style.transition = "none";
-    if (app) app.style.transition = "none";
+    if (sheet) {
+      sheetHeightRef.current = sheet.offsetHeight || 400; // Measure once
+      sheet.style.transition = "none";
+      sheet.style.willChange = "transform";
+    }
+
+    appElementRef.current = document.getElementById("app");
+    if (appElementRef.current) {
+      appElementRef.current.style.transition = "none";
+    }
+
+    if (scrimRef.current) {
+      scrimRef.current.style.transition = "none";
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -289,47 +335,89 @@ export const AddSheet: React.FC = () => {
     const dy = e.clientY - dragStartY.current;
     currentDragY.current = dy;
 
-    const sheet = sheetRef.current;
-    const app = document.getElementById("app");
-    const h = sheet.offsetHeight || 400;
-    const p = Math.max(0, Math.min(1, dy / h));
+    // Track instantaneous velocity
+    const now = performance.now();
+    const dt = now - lastMoveTime.current;
+    if (dt > 16) {
+      pointerVelocityY.current = (e.clientY - lastMoveY.current) / dt;
+      lastMoveY.current = e.clientY;
+      lastMoveTime.current = now;
+    }
 
-    sheet.style.transform = `translate(-50%, ${dy < 0 ? dy * 0.12 : dy}px)`;
+    const sheet = sheetRef.current;
+    const app = appElementRef.current;
+    const scrim = scrimRef.current;
+    const h = sheetHeightRef.current;
+
+    // Asymptotic resistance if dragging upward past top edge
+    let effectiveY = dy;
+    if (dy < 0) {
+      const over = -dy;
+      effectiveY = -((over * 40) / (over + 40));
+    }
+
+    const p = Math.max(0, Math.min(1, effectiveY / h));
+
+    sheet.style.transform = `translate(-50%, ${effectiveY}px)`;
+
     if (app) {
-      app.style.transform = `scale(${0.93 + 0.07 * p}) translateY(${12 * (1 - p)}px)`;
-      app.style.filter = `brightness(${0.82 + 0.18 * p})`;
+      const scale = 0.93 + 0.07 * p;
+      const translateY = 12 * (1 - p);
+      app.style.transform = `scale(${scale}) translateY(${translateY}px)`;
+      // app.style.filter is ELIMINATED!
+    }
+
+    if (scrim) {
+      scrim.style.opacity = String(0.45 * (1 - p));
     }
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     if (dragStartY.current === null || !sheetRef.current) return;
     const dy = currentDragY.current;
-    const elapsed = Math.max(1, e.timeStamp - dragStartTime.current);
-    const velocity = dy / elapsed;
+    const vy = pointerVelocityY.current;
+    dragStartY.current = null;
 
     const sheet = sheetRef.current;
-    const app = document.getElementById("app");
+    const app = appElementRef.current;
+    const scrim = scrimRef.current;
+
     if (sheet) {
+      sheet.style.willChange = "";
       sheet.style.transition = "";
       sheet.style.transform = "";
     }
     if (app) {
       app.style.transition = "";
       app.style.transform = "";
-      app.style.filter = "";
+    }
+    if (scrim) {
+      scrim.style.transition = "";
+      scrim.style.opacity = "";
     }
 
-    dragStartY.current = null;
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {}
 
-    if (dy > 110 || velocity > 0.6) {
+    // Dismiss if dragged down far enough or flicked with downward velocity
+    if (dy > 110 || vy > 0.55) {
       closeSheet();
     }
   };
 
+  const sheetTitle = editingItem ? "Изменить товар" : (sheetMode === "quick" ? t.addTitle : t.aiTab);
+  const submitBtnText = saveItemMutation.isPending
+    ? "Сохранение..."
+    : editingItem
+    ? "Сохранить изменения"
+    : t.addTitle;
+
   return (
     <>
-      {/* Scrim */}
+      {/* Scrim with GPU-composited opacity */}
       <div
+        ref={scrimRef}
         className={`scrim ${isSheetOpen ? "open" : ""}`}
         onClick={closeSheet}
         aria-hidden="true"
@@ -341,9 +429,9 @@ export const AddSheet: React.FC = () => {
         className={`sheet glass ${isSheetOpen ? "open" : ""}`}
         role="dialog"
         aria-modal="true"
-        aria-label={t.addTitle}
+        aria-label={sheetTitle}
       >
-        {/* Drag Handle with real-time iOS scale & brightness presentation */}
+        {/* Drag Handle with real-time iOS physics */}
         <div
           className="sheet-hd"
           onPointerDown={handlePointerDown}
@@ -357,48 +445,50 @@ export const AddSheet: React.FC = () => {
         </div>
 
         {/* Title */}
-        <h3>{t.addTitle}</h3>
+        <h3>{sheetTitle}</h3>
 
-        {/* Mode Segmented Control: dual --k and --seg-idx */}
-        <div
-          className="seg"
-          style={
-            {
-              "--seg-cols": 2,
-              "--seg-idx": segIdx,
-              "--k": segIdx,
-            } as React.CSSProperties
-          }
-        >
-          <i aria-hidden="true" />
-          <button
-            type="button"
-            className={sheetMode === "quick" ? "on" : ""}
-            onClick={() => {
-              if (hapticsEnabled) triggerHaptic("selection");
-              setSheetMode("quick");
-            }}
+        {/* Mode Segmented Control: hidden when editing a specific item */}
+        {!editingItem && (
+          <div
+            className="seg"
+            style={
+              {
+                "--seg-cols": 2,
+                "--seg-idx": segIdx,
+                "--k": segIdx,
+              } as React.CSSProperties
+            }
           >
-            {t.quickTab}
-          </button>
-          <button
-            type="button"
-            className={sheetMode === "ai" ? "on" : ""}
-            onClick={() => {
-              if (hapticsEnabled) triggerHaptic("selection");
-              setSheetMode("ai");
-            }}
-          >
-            {t.aiTab}
-          </button>
-        </div>
+            <i aria-hidden="true" />
+            <button
+              type="button"
+              className={sheetMode === "quick" ? "on" : ""}
+              onClick={() => {
+                if (hapticsEnabled) triggerHaptic("selection");
+                setSheetMode("quick");
+              }}
+            >
+              {t.quickTab}
+            </button>
+            <button
+              type="button"
+              className={sheetMode === "ai" ? "on" : ""}
+              onClick={() => {
+                if (hapticsEnabled) triggerHaptic("selection");
+                setSheetMode("ai");
+              }}
+            >
+              {t.aiTab}
+            </button>
+          </div>
+        )}
 
-        {/* ── QUICK ADD TAB ── */}
-        {sheetMode === "quick" && (
+        {/* ── QUICK ADD / EDIT TAB ── */}
+        {(sheetMode === "quick" || editingItem) && (
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              createItemMutation.mutate();
+              saveItemMutation.mutate();
             }}
           >
             {/* Product Name Input */}
@@ -461,60 +551,63 @@ export const AddSheet: React.FC = () => {
               </div>
             </div>
 
-            {/* Optional Price */}
-            <div className="field-group">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <label className="field-label">{t.price}</label>
-                {quickLineTotal !== null && (
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "var(--primary)" }}>
-                    Итого: {formatCurrency(quickLineTotal, "UZS", language)}
-                  </span>
-                )}
-              </div>
-              <input
-                type="number"
-                step="any"
-                className="text-input"
-                placeholder="Опционально, например 15000"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-              />
-            </div>
-
             {/* Category Selector */}
             <div className="field-group">
               <label className="field-label">{t.category}</label>
-              <div className="cat-filter-row">
-                {CATEGORIES.map((cat) => (
+              <div className="cat-chip-grid">
+                {CATEGORIES.map((c) => (
                   <button
-                    key={cat}
+                    key={c}
                     type="button"
-                    className={`cat-pill ${category === cat ? "on" : ""}`}
+                    className={`chip ${category === c ? "on" : ""}`}
                     onClick={() => {
                       if (hapticsEnabled) triggerHaptic("selection");
-                      setCategory(cat);
+                      setCategory(c);
                     }}
                   >
-                    {cat}
+                    {c}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Add Button */}
+            {/* Price Input */}
+            <div className="field-group">
+              <label className="field-label">
+                {t.price} ({language === "uz" ? "so'm" : "сум"})
+              </label>
+              <input
+                type="text"
+                inputMode="decimal"
+                className="text-input"
+                placeholder="0"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+              />
+            </div>
+
+            {/* Line Total Preview */}
+            {quickLineTotal !== null && quickLineTotal > 0 && (
+              <div className="line-total-preview">
+                <span>{t.estimatedTotal}:</span>
+                <b>{formatCurrency(quickLineTotal, "UZS", language)}</b>
+              </div>
+            )}
+
+            {/* Add / Save Button */}
             <button
               type="submit"
               className="btn press"
-              disabled={!name.trim() || createItemMutation.isPending}
+              disabled={!name.trim() || saveItemMutation.isPending}
               style={{ marginTop: 16 }}
             >
-              {createItemMutation.isPending ? "Добавление..." : t.addTitle}
+              {submitBtnText}
             </button>
           </form>
         )}
 
-        {/* ── AI ADD TAB ── */}
-        {sheetMode === "ai" && (
+        {/* ── AI ADD TAB (Only when not editing) ── */}
+        {sheetMode === "ai" && !editingItem && (
           <div>
             <div className="field-group">
               <label className="field-label">Напишите список текстом (RU, UZ, EN)</label>
