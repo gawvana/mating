@@ -10,6 +10,7 @@ interface SwipeableItemProps {
   onSwipeLeft: (item: ShoppingItem) => void;  // Delete
   hapticsEnabled: boolean;
   swipeEnabled: boolean;
+  isExiting?: boolean;
 }
 
 const COMMIT_THRESHOLD = 80;   // px to commit action
@@ -27,6 +28,7 @@ export const SwipeableItem: React.FC<SwipeableItemProps> = React.memo(({
   onSwipeLeft,
   hapticsEnabled,
   swipeEnabled,
+  isExiting = false,
 }) => {
   const itemRef = useRef<HTMLDivElement>(null);
   const bgRightRef = useRef<HTMLDivElement>(null);
@@ -202,7 +204,7 @@ export const SwipeableItem: React.FC<SwipeableItemProps> = React.memo(({
 
   if (!swipeEnabled) {
     return (
-      <div className="swipe-wrapper">
+      <div className={`swipe-wrapper ${isExiting ? "exiting" : ""}`}>
         <div className="swipe-item" ref={itemRef}>
           {children}
         </div>
@@ -211,7 +213,7 @@ export const SwipeableItem: React.FC<SwipeableItemProps> = React.memo(({
   }
 
   return (
-    <div className="swipe-wrapper">
+    <div className={`swipe-wrapper ${isExiting ? "exiting" : ""}`}>
       {/* Right swipe background (Buy/Restore) */}
       <div className="swipe-bg swipe-bg-right" ref={bgRightRef} style={{ opacity: 0 }}>
         <svg className="swipe-bg-icon" ref={iconRightRef} viewBox="0 0 24 24" aria-hidden="true" style={{ opacity: 0 }}>

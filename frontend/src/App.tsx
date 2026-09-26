@@ -85,21 +85,21 @@ export const App: React.FC = () => {
     root.style.setProperty("--curve-tab", curveMap[p.tabIndicator?.curve || "snappy"] || curveMap.snappy);
     root.style.setProperty("--curve-list", curveMap[p.listAddDelete?.curve || "snappy"] || curveMap.snappy);
 
-    // Duration variables
-    root.style.setProperty("--dur-fab", `${p.fabMorph?.duration || 450}ms`);
-    root.style.setProperty("--dur-sheet", `${p.sheetSpring?.duration || 600}ms`);
-    root.style.setProperty("--dur-purchase", `${p.purchaseTransition?.duration || 400}ms`);
-    root.style.setProperty("--dur-total", `${p.animatedTotal?.duration || 400}ms`);
-    root.style.setProperty("--dur-budget", `${p.animatedBudget?.duration || 700}ms`);
-    root.style.setProperty("--dur-tab", `${p.tabIndicator?.duration || 650}ms`);
-    root.style.setProperty("--dur-checkbox", `${p.checkboxSpring?.duration || 350}ms`);
-    root.style.setProperty("--dur-swipe", `${p.swipeResistance?.duration || 450}ms`);
-    root.style.setProperty("--dur-longpress", `${p.longPressMenu?.duration || 250}ms`);
-    root.style.setProperty("--dur-edit-morph", `${p.editMorph?.duration || 400}ms`);
-    root.style.setProperty("--dur-status-pill", `${p.statusPill?.duration || 400}ms`);
-    root.style.setProperty("--dur-header", `${p.headerMotion?.duration || 600}ms`);
-    root.style.setProperty("--dur-keyboard", `${p.keyboardSheet?.duration || 350}ms`);
-    root.style.setProperty("--dur-list", `${p.listAddDelete?.duration || 350}ms`);
+    // Duration variables (disabled animations drop to 0.01ms for instant transitions)
+    root.style.setProperty("--dur-fab", p.fabMorph?.enabled ? `${p.fabMorph?.duration || 450}ms` : "0.01ms");
+    root.style.setProperty("--dur-sheet", p.sheetSpring?.enabled ? `${p.sheetSpring?.duration || 600}ms` : "0.01ms");
+    root.style.setProperty("--dur-purchase", p.purchaseTransition?.enabled ? `${p.purchaseTransition?.duration || 400}ms` : "0.01ms");
+    root.style.setProperty("--dur-total", p.animatedTotal?.enabled ? `${p.animatedTotal?.duration || 400}ms` : "0.01ms");
+    root.style.setProperty("--dur-budget", p.animatedBudget?.enabled ? `${p.animatedBudget?.duration || 700}ms` : "0.01ms");
+    root.style.setProperty("--dur-tab", p.tabIndicator?.enabled ? `${p.tabIndicator?.duration || 650}ms` : "0.01ms");
+    root.style.setProperty("--dur-checkbox", p.checkboxSpring?.enabled ? `${p.checkboxSpring?.duration || 350}ms` : "0.01ms");
+    root.style.setProperty("--dur-swipe", p.swipeResistance?.enabled ? `${p.swipeResistance?.duration || 450}ms` : "0.01ms");
+    root.style.setProperty("--dur-longpress", p.longPressMenu?.enabled ? `${p.longPressMenu?.duration || 250}ms` : "0.01ms");
+    root.style.setProperty("--dur-edit-morph", p.editMorph?.enabled ? `${p.editMorph?.duration || 400}ms` : "0.01ms");
+    root.style.setProperty("--dur-status-pill", p.statusPill?.enabled ? `${p.statusPill?.duration || 400}ms` : "0.01ms");
+    root.style.setProperty("--dur-header", p.headerMotion?.enabled ? `${p.headerMotion?.duration || 600}ms` : "0.01ms");
+    root.style.setProperty("--dur-keyboard", p.keyboardSheet?.enabled ? `${p.keyboardSheet?.duration || 350}ms` : "0.01ms");
+    root.style.setProperty("--dur-list", p.listAddDelete?.enabled ? `${p.listAddDelete?.duration || 350}ms` : "0.01ms");
     root.style.setProperty("--motion-intensity", String(p.intensity ?? 100));
 
     // Glass tier classes
@@ -302,8 +302,8 @@ export const App: React.FC = () => {
           {/* Sticky Glass Navigation Bar */}
           <NavBar />
 
-          {/* Active Screen */}
-          <main className="wrap">
+          {/* Active Screen with smooth crossfade */}
+          <main className="wrap screen-crossfade" key={activeTab}>
             {activeTab === "list" && <ListScreen />}
             <React.Suspense fallback={<div className="skeleton" style={{ height: 120, margin: "20px 0", borderRadius: "var(--r3)" }} />}>
               {activeTab === "stats" && <StatsScreen />}

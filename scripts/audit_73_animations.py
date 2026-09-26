@@ -333,6 +333,183 @@ async def run_audit():
             print("\n=== CSS ROOT MOTION VARIABLES FROM STORE ===")
             print(json.dumps(css_vars.get("result", {}).get("value", {}), indent=2))
 
+            # Test 5: Setting Toggle Disabling Verification (0.01ms duration check)
+            await send("Runtime.evaluate", {
+                "expression": "window.__MATING_STORE__.getState().updateAnimSetting('headerMotion', { enabled: false })"
+            })
+            await asyncio.sleep(0.3)
+            dur_disabled = await send("Runtime.evaluate", {
+                "expression": "document.documentElement.style.getPropertyValue('--dur-header')"
+            })
+            await send("Runtime.evaluate", {
+                "expression": "window.__MATING_STORE__.getState().updateAnimSetting('headerMotion', { enabled: true })"
+            })
+            await asyncio.sleep(0.3)
+            dur_enabled = await send("Runtime.evaluate", {
+                "expression": "document.documentElement.style.getPropertyValue('--dur-header')"
+            })
+            print("\n=== SETTING DISABLE RUNTIME EFFECT ===")
+            print({"durDisabled": dur_disabled.get("result", {}).get("value"), "durEnabled": dur_enabled.get("result", {}).get("value")})
+
+            # Switch back to List tab
+            await send("Runtime.evaluate", {
+                "expression": "document.querySelectorAll('.dock .tab')[0].click()"
+            })
+            await asyncio.sleep(0.7)
+
+            # Test 6: Sheet Detents (#20) & Stepper Bump (#46)
+            await send("Runtime.evaluate", {
+                "expression": "document.getElementById('fab').click()"
+            })
+            await asyncio.sleep(0.5)
+
+            detent_res = await send("Runtime.evaluate", {
+                "expression": "document.querySelector('.sheet').getAttribute('data-detent')"
+            })
+
+            await send("Runtime.evaluate", {
+                "expression": "document.querySelector('button[aria-label=\"Увеличить\"]').click()"
+            })
+            await asyncio.sleep(0.08)
+
+            bump_res = await send("Runtime.evaluate", {
+                "expression": "Boolean(document.querySelector('.stepper-val')?.classList.contains('bump'))"
+            })
+            print("\n=== SHEET DETENTS & STEPPER BUMP EVIDENCE ===")
+            print({"detent": detent_res.get("result", {}).get("value"), "hasBump": bump_res.get("result", {}).get("value")})
+
+            await send("Runtime.evaluate", {
+                "expression": "document.querySelector('.scrim').click()"
+            })
+            await asyncio.sleep(0.6)
+
+            # Test 7: Search Expand (#44)
+            await send("Runtime.evaluate", {
+                "expression": "document.querySelector('.search-toggle-btn').click()"
+            })
+            await asyncio.sleep(0.4)
+
+            search_res = await send("Runtime.evaluate", {
+                "expression": """
+                (() => {
+                    const searchBar = document.querySelector('.search-bar');
+                    const wrap = document.querySelector('.search-wrap');
+                    return {
+                        hasSearchBar: Boolean(searchBar),
+                        wrapOpen: wrap ? wrap.classList.contains('open') : false
+                    };
+                })()
+                """,
+                "returnByValue": True
+            })
+            print("\n=== SEARCH EXPAND EVIDENCE ===")
+            print(search_res.get("result", {}).get("value"))
+
+            # Test 8: PTR, Scroll-to-top FAB, and Sticky Header Elements
+            dom_test = await send("Runtime.evaluate", {
+                "expression": """
+                (() => {
+                    return {
+                        hasPtrContainer: Boolean(document.querySelector('.ptr-container')),
+                        hasPtrSpinner: Boolean(document.querySelector('.ptr-spinner')),
+                        hasSummaryStrip: Boolean(document.querySelector('.summary-strip')),
+                        revealCount: document.querySelectorAll('.reveal-item').length
+                    };
+                })()
+                """,
+                "returnByValue": True
+            })
+            print("\n=== PTR, SPINNER & SCROLL REVEAL EVIDENCE ===")
+            print(dom_test.get("result", {}).get("value"))
+
+            # Test 9: Card Shape Morph (#11)
+            card_morph_test = await send("Runtime.evaluate", {
+                "expression": """
+                (() => {
+                    const testCard = document.createElement('div');
+                    testCard.className = 'item-row prelift';
+                    document.body.appendChild(testCard);
+                    const style = window.getComputedStyle(testCard);
+                    const br = style.borderRadius;
+                    const transform = style.transform;
+                    testCard.remove();
+                    return { preliftRadius: br, preliftTransform: transform };
+                })()
+                """,
+                "returnByValue": True
+            })
+            print("\n=== CARD SHAPE MORPH EVIDENCE ===")
+            print(card_morph_test.get("result", {}).get("value"))
+
+            # Test 10: FLIP Edit Morph Ghost (#40)
+            await send("Runtime.evaluate", {
+                "expression": """
+                window.__MATING_STORE__.getState().openEditSheet(
+                    { id: 'test-item', name: 'Молоко', quantity: 1, unit: 'л', version: 1 },
+                    { top: 120, left: 16, width: 358, height: 56 }
+                );
+                """
+            })
+            await asyncio.sleep(0.1)
+
+            morph_ghost_res = await send("Runtime.evaluate", {
+                "expression": "Boolean(document.querySelector('.edit-morph-ghost'))"
+            })
+            print("\n=== FLIP EDIT MORPH GHOST EVIDENCE ===")
+            print({"hasGhost": morph_ghost_res.get("result", {}).get("value")})
+
+            await send("Runtime.evaluate", {
+                "expression": "window.__MATING_STORE__.getState().closeSheet()"
+            })
+            await asyncio.sleep(0.5)
+
+            # Test 11: Multi-toast Stack (#68)
+            await send("Runtime.evaluate", {
+                "expression": """
+                window.__MATING_STORE__.getState().showUndoToast('1', 'Яблоки');
+                window.__MATING_STORE__.getState().showUndoToast('2', 'Хлеб');
+                """
+            })
+            await asyncio.sleep(0.3)
+
+            toast_stack_res = await send("Runtime.evaluate", {
+                "expression": """
+                (() => {
+                    const stack = document.querySelector('.toast-stack');
+                    const count = stack ? stack.querySelectorAll('.undo-toast').length : 0;
+                    return { hasStack: Boolean(stack), toastCount: count };
+                })()
+                """,
+                "returnByValue": True
+            })
+            print("\n=== TOAST STACK COLLAPSE EVIDENCE ===")
+            print(toast_stack_res.get("result", {}).get("value"))
+
+            await send("Runtime.evaluate", {
+                "expression": "window.__MATING_STORE__.getState().clearUndoToast()"
+            })
+            await asyncio.sleep(0.3)
+
+            # Test 12: Glass Button Ripple & Magnetic Pull (#36, #58)
+            ripple_test = await send("Runtime.evaluate", {
+                "expression": """
+                (() => {
+                    const btn = document.querySelector('button');
+                    if (!btn) return { ok: false };
+                    const ripple = document.createElement('span');
+                    ripple.className = 'ripple-effect';
+                    btn.appendChild(ripple);
+                    const rippleStyle = window.getComputedStyle(ripple);
+                    const hasAnim = rippleStyle.animationName.includes('ripple');
+                    ripple.remove();
+                    return { ok: true, hasRippleAnim: hasAnim };
+                })()
+                """,
+                "returnByValue": True
+            })
+            print("\n=== RIPPLE & MAGNETIC FEEDBACK EVIDENCE ===")
+            print(ripple_test.get("result", {}).get("value"))
+
     finally:
         proc.terminate()
 

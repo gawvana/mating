@@ -25,9 +25,17 @@ export type HapticMode = "Off" | "Light" | "Normal";
 export type SpringCurve = "snappy" | "balanced" | "soft" | "linear";
 export type MotionPreset = "Apple-like" | "Minimal" | "Battery Saver" | "Custom";
 
-interface UndoToastData {
+export interface SourceRect {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+export interface UndoToastData {
   id: string;
   name: string;
+  timestamp?: number;
 }
 
 /** One of the 15 configurable animations */
@@ -199,6 +207,16 @@ interface AppState {
   autoCategory: boolean;
   setAutoCategory: (enabled: boolean) => void;
 
+  // Category ordering
+  categoryOrder: string[];
+  setCategoryOrder: (order: string[]) => void;
+
+  // Search state
+  searchQuery: string;
+  isSearchOpen: boolean;
+  setSearchQuery: (query: string) => void;
+  setIsSearchOpen: (open: boolean) => void;
+
   // Motion Profile State
   motionProfile: MotionProfile;
   setMotionProfile: (profile: MotionProfile) => void;
@@ -211,13 +229,16 @@ interface AppState {
   sheetMode: SheetMode;
   sheetInitialText: string;
   editingItem: ShoppingItem | null;
+  editSourceRect: SourceRect | null;
   openSheet: (mode?: SheetMode, initialText?: string) => void;
-  openEditSheet: (item: ShoppingItem) => void;
+  openEditSheet: (item: ShoppingItem, sourceRect?: SourceRect | null) => void;
   closeSheet: () => void;
   setSheetMode: (mode: SheetMode) => void;
 
   undoToast: UndoToastData | null;
+  undoToasts: UndoToastData[];
   showUndoToast: (id: string, name: string) => void;
+  dismissUndoToast: (id: string) => void;
   clearUndoToast: () => void;
 
   isOffline: boolean;
@@ -258,6 +279,16 @@ const _initConfirmDelete = typeof localStorage !== "undefined"
 const _initAutoCat = typeof localStorage !== "undefined"
   ? localStorage.getItem("mating_auto_cat") !== "false"
   : true;
+
+const _initCategoryOrder: string[] = (() => {
+  try {
+    if (typeof localStorage !== "undefined") {
+      const raw = localStorage.getItem("mating_cat_order");
+      if (raw) return JSON.parse(raw);
+    }
+  } catch {}
+  return [];
+})();
 
 // Apply immediately to <html> before React mounts
 if (typeof document !== "undefined") {
@@ -380,6 +411,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ autoCategory: enabled });
   },
 
+  categoryOrder: _initCategoryOrder,
+  setCategoryOrder: (order) => {
+    try {
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem("mating_cat_order", JSON.stringify(order));
+      }
+    } catch {}
+    set({ categoryOrder: order });
+  },
+
+  searchQuery: "",
+  isSearchOpen: false,
+  setSearchQuery: (query) => set({ searchQuery: query }),
+  setIsSearchOpen: (open) => set({ isSearchOpen: open }),
+
   // ── MOTION PROFILE ──
   motionProfile: _initMotionProfile,
 
@@ -454,32 +500,50 @@ export const useAppStore = create<AppState>((set, get) => ({
   sheetMode: "quick",
   sheetInitialText: "",
   editingItem: null,
+  editSourceRect: null,
   openSheet: (mode = "quick", initialText = "") => {
     if (get().hapticsEnabled) triggerHaptic("medium");
     document.body.classList.add("open");
-    set({ isSheetOpen: true, sheetMode: mode, sheetInitialText: initialText, editingItem: null });
+    set({ isSheetOpen: true, sheetMode: mode, sheetInitialText: initialText, editingItem: null, editSourceRect: null });
   },
-  openEditSheet: (item: ShoppingItem) => {
+  openEditSheet: (item: ShoppingItem, sourceRect = null) => {
     if (get().hapticsEnabled) triggerHaptic("medium");
     document.body.classList.add("open");
     set({
       isSheetOpen: true,
       sheetMode: "quick",
       editingItem: item,
+      editSourceRect: sourceRect,
       sheetInitialText: "",
     });
   },
   closeSheet: () => {
     document.body.classList.remove("open");
-    set({ isSheetOpen: false, sheetInitialText: "", editingItem: null });
+    set({ isSheetOpen: false, sheetInitialText: "", editingItem: null, editSourceRect: null });
   },
   setSheetMode: (sheetMode) => {
     set({ sheetMode });
   },
 
   undoToast: null,
-  showUndoToast: (id, name) => set({ undoToast: { id, name } }),
-  clearUndoToast: () => set({ undoToast: null }),
+  undoToasts: [],
+  showUndoToast: (id, name) => {
+    const item = { id, name, timestamp: Date.now() };
+    set((state) => ({
+      undoToast: item,
+      undoToasts: [...state.undoToasts.filter((t) => t.id !== id).slice(-2), item],
+    }));
+  },
+  dismissUndoToast: (id) => {
+    set((state) => {
+      const filtered = state.undoToasts.filter((t) => t.id !== id);
+      return {
+        undoToasts: filtered,
+        undoToast: filtered.length > 0 ? filtered[filtered.length - 1] : null,
+      };
+    });
+  },
+  clearUndoToast: () => set({ undoToast: null, undoToasts: [] }),
 
   isOffline: typeof navigator !== "undefined" ? !navigator.onLine : false,
   isSyncing: false,
@@ -495,4 +559,9 @@ export function getEffectiveDuration(key: AnimKey): number {
   const s = p[key];
   if (!s || !s.enabled) return 0;
   return Math.round(s.duration * ((p.intensity ?? 100) / 100));
+}
+
+if (typeof window !== "undefined") {
+  (window as any).__MATING_STORE__ = useAppStore;
+  (window as any).__MATING_MOUNTED__ = true;
 }

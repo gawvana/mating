@@ -38,26 +38,63 @@ export const GlassButton = memo<GlassButtonProps>(({
 }) => {
   const btnRef = useRef<HTMLButtonElement>(null);
 
-  // Desktop specular tracking: update local CSS vars only on fine pointers
+  // Desktop specular tracking & Magnetic pull (#36)
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLButtonElement>) => {
-      if (specular && window.matchMedia?.("(pointer: fine)").matches && btnRef.current) {
+      if (window.matchMedia?.("(pointer: fine)").matches && btnRef.current) {
         const rect = btnRef.current.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
-        btnRef.current.style.setProperty("--btn-mx", `${x}px`);
-        btnRef.current.style.setProperty("--btn-my", `${y}px`);
+
+        if (specular) {
+          btnRef.current.style.setProperty("--btn-mx", `${x}px`);
+          btnRef.current.style.setProperty("--btn-my", `${y}px`);
+        }
+
+        // Magnetic pull effect (max 6px)
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+        const pullX = Math.max(-6, Math.min(6, (x - centerX) * 0.15));
+        const pullY = Math.max(-6, Math.min(6, (y - centerY) * 0.15));
+        btnRef.current.style.transform = `translate3d(${pullX}px, ${pullY}px, 0)`;
       }
       onPointerMove?.(e);
     },
     [specular, onPointerMove]
   );
 
-  // Snappy press tactile feedback
+  const handlePointerLeave = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      if (btnRef.current) {
+        btnRef.current.style.transform = "";
+      }
+      rest.onPointerLeave?.(e);
+    },
+    [rest]
+  );
+
+  // Snappy press tactile feedback & Ripple tap (#58)
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLButtonElement>) => {
-      if (!disabled && !loading && haptic !== "none") {
-        triggerHaptic(haptic);
+      if (!disabled && !loading) {
+        if (haptic !== "none") {
+          triggerHaptic(haptic);
+        }
+
+        if (btnRef.current) {
+          const rect = btnRef.current.getBoundingClientRect();
+          const ripple = document.createElement("span");
+          ripple.className = "ripple-effect";
+          const size = Math.max(rect.width, rect.height);
+          const x = e.clientX - rect.left - size / 2;
+          const y = e.clientY - rect.top - size / 2;
+          ripple.style.width = `${size}px`;
+          ripple.style.height = `${size}px`;
+          ripple.style.left = `${x}px`;
+          ripple.style.top = `${y}px`;
+          btnRef.current.appendChild(ripple);
+          setTimeout(() => ripple.remove(), 600);
+        }
       }
       onPointerDown?.(e);
     },
@@ -78,6 +115,7 @@ export const GlassButton = memo<GlassButtonProps>(({
       data-loading={loading ? "true" : undefined}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
+      onPointerLeave={handlePointerLeave}
       onClick={isInteractive ? onClick : undefined}
       className={`glass-btn glass-btn--${variant} glass-btn--${size} ${selected ? "is-selected" : ""} ${loading ? "is-loading" : ""} ${className}`}
       style={style}

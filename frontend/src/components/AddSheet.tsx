@@ -31,6 +31,8 @@ export const AddSheet: React.FC = () => {
   const setSheetMode = useAppStore((s) => s.setSheetMode);
   const sheetInitialText = useAppStore((s) => s.sheetInitialText);
   const editingItem = useAppStore((s) => s.editingItem);
+  const editSourceRect = useAppStore((s) => s.editSourceRect);
+  const motionProfile = useAppStore((s) => s.motionProfile);
   const language = useAppStore((s) => s.language);
   const hapticsEnabled = useAppStore((s) => s.hapticsEnabled);
   const autoCategory = useAppStore((s) => s.autoCategory);
@@ -50,6 +52,16 @@ export const AddSheet: React.FC = () => {
   const pointerVelocityY = useRef<number>(0);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Detent state (compact | medium | expanded)
+  const [detent, setDetent] = useState<"compact" | "medium" | "expanded">("medium");
+
+  // Stepper bump animation state
+  const [isBumping, setIsBumping] = useState(false);
+
+  // FLIP Ghost morph state
+  const [morphActive, setMorphActive] = useState(false);
+  const [ghostStyle, setGhostStyle] = useState<React.CSSProperties | null>(null);
 
   // Quick Add Form state
   const [name, setName] = useState("");
@@ -114,14 +126,99 @@ export const AddSheet: React.FC = () => {
     }
   }, [isSheetOpen]);
 
+  // Detent initialization on open
   useEffect(() => {
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        abortControllerRef.current = null;
+    if (isSheetOpen) {
+      if (sheetMode === "ai" && parsedItems.length > 2) {
+        setDetent("expanded");
+      } else {
+        setDetent("medium");
+      }
+    }
+  }, [isSheetOpen, sheetMode, parsedItems.length]);
+
+  // Keyboard Sheet Adaptation (#33 & keyboardSheet setting)
+  useEffect(() => {
+    if (!isSheetOpen) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const handleResize = () => {
+      const sheet = sheetRef.current;
+      if (!sheet) return;
+      const isKeyboard = vv.height < window.innerHeight * 0.82;
+      const kbSetting = motionProfile?.keyboardSheet?.enabled ?? true;
+      if (isKeyboard && kbSetting) {
+        sheet.classList.add("keyboard-open");
+        const offset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+        sheet.style.setProperty("--keyboard-offset", `${offset}px`);
+      } else {
+        sheet.classList.remove("keyboard-open");
+        sheet.style.removeProperty("--keyboard-offset");
       }
     };
-  }, []);
+
+    vv.addEventListener("resize", handleResize);
+    vv.addEventListener("scroll", handleResize);
+    return () => {
+      vv.removeEventListener("resize", handleResize);
+      vv.removeEventListener("scroll", handleResize);
+    };
+  }, [isSheetOpen, motionProfile?.keyboardSheet?.enabled]);
+
+  // FLIP Edit Continuity (#40 & editMorph setting)
+  useEffect(() => {
+    const morphEnabled = motionProfile?.editMorph?.enabled ?? true;
+    if (isSheetOpen && editingItem && editSourceRect && morphEnabled) {
+      setGhostStyle({
+        position: "fixed",
+        top: editSourceRect.top,
+        left: editSourceRect.left,
+        width: editSourceRect.width,
+        height: editSourceRect.height,
+        opacity: 0.9,
+        borderRadius: "16px",
+        background: "var(--bg-glass)",
+        border: "1px solid var(--border-glass)",
+        pointerEvents: "none",
+        zIndex: 9999,
+        transition: "none",
+      });
+      setMorphActive(true);
+
+      const frame = requestAnimationFrame(() => {
+        const sheetEl = sheetRef.current;
+        if (sheetEl) {
+          const r = sheetEl.getBoundingClientRect();
+          setGhostStyle({
+            position: "fixed",
+            top: r.top,
+            left: r.left,
+            width: r.width,
+            height: r.height,
+            opacity: 0,
+            borderRadius: "28px",
+            background: "var(--bg-glass)",
+            border: "1px solid var(--border-glass)",
+            pointerEvents: "none",
+            zIndex: 9999,
+            transition: `all var(--dur-edit-morph, 400ms) var(--spring-snappy)`,
+          });
+        }
+      });
+      const timer = setTimeout(() => {
+        setMorphActive(false);
+        setGhostStyle(null);
+      }, 450);
+      return () => {
+        cancelAnimationFrame(frame);
+        clearTimeout(timer);
+      };
+    } else {
+      setMorphActive(false);
+      setGhostStyle(null);
+    }
+  }, [isSheetOpen, editingItem, editSourceRect, motionProfile?.editMorph?.enabled]);
 
   // Focus trap, Escape key, and inert management
   useEffect(() => {
@@ -180,6 +277,8 @@ export const AddSheet: React.FC = () => {
     const current = parseFloat(quantity) || 1;
     const next = Math.max(0.5, current + delta);
     setQuantity(String(Math.round(next * 10) / 10));
+    setIsBumping(true);
+    setTimeout(() => setIsBumping(false), 220);
   };
 
   // Quick save mutation (handles both create and edit)
@@ -417,9 +516,25 @@ export const AddSheet: React.FC = () => {
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     } catch {}
 
-    // Dismiss if dragged down far enough or flicked with downward velocity
-    if (dy > 110 || vy > 0.55) {
-      closeSheet();
+    // Dismiss or detent snapping
+    if (dy > 140 || (dy > 60 && vy > 0.6)) {
+      if (detent === "expanded") {
+        setDetent("medium");
+        if (hapticsEnabled) triggerHaptic("light");
+      } else if (detent === "medium" && dy < 180) {
+        setDetent("compact");
+        if (hapticsEnabled) triggerHaptic("light");
+      } else {
+        closeSheet();
+      }
+    } else if (dy < -60 || vy < -0.5) {
+      if (detent === "compact") {
+        setDetent("medium");
+        if (hapticsEnabled) triggerHaptic("light");
+      } else if (detent === "medium") {
+        setDetent("expanded");
+        if (hapticsEnabled) triggerHaptic("light");
+      }
     }
   };
 
@@ -440,10 +555,16 @@ export const AddSheet: React.FC = () => {
         aria-hidden="true"
       />
 
+      {/* Morph ghost element for FLIP transition (#40) */}
+      {morphActive && ghostStyle && (
+        <div className="edit-morph-ghost" style={ghostStyle} aria-hidden="true" />
+      )}
+
       {/* Sheet Container */}
       <div
         ref={sheetRef}
         className={`sheet glass ${isSheetOpen ? "open" : ""}`}
+        data-detent={detent}
         role="dialog"
         aria-modal="true"
         aria-label={sheetTitle}
@@ -536,7 +657,7 @@ export const AddSheet: React.FC = () => {
                 <input
                   type="number"
                   step="any"
-                  className="stepper-val"
+                  className={`stepper-val ${isBumping ? "bump" : ""}`}
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value)}
                 />
