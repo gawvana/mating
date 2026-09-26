@@ -44,7 +44,7 @@
       "></div>
       <div id="mating-fail" style="display: none; flex-direction: column; align-items: center; margin-top: 16px;">
         <p style="font-size: 14px; color: #ff6b6b; margin-bottom: 12px; font-weight: 600;">Mating не удалось загрузить</p>
-        <button onclick="window.location.reload()" style="
+        <button onclick="window.location.href = window.location.pathname + '?_t=' + Date.now()" style="
           padding: 10px 22px; border-radius: 12px; border: none;
           background: #6366f1; color: white; font-weight: 600; font-size: 14px;
           cursor: pointer;
@@ -60,9 +60,11 @@
     </style>
     <script>
       setTimeout(function() {
+        if (window.__mating_mounted) return;
         var spin = document.getElementById('mating-spinner');
         var fail = document.getElementById('mating-fail');
-        if (spin && fail && document.getElementById('mating-preloader')) {
+        var preloader = document.getElementById('mating-preloader');
+        if (spin && fail && preloader) {
           spin.style.display = 'none';
           fail.style.display = 'flex';
         }

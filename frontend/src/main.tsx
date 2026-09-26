@@ -5,11 +5,22 @@ import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./styles/design-system.css";
 
-// Handle chunk loading errors during dynamic deployments
+// ── Handle chunk loading errors during dynamic deployments safely ──
 if (typeof window !== "undefined") {
   window.addEventListener("vite:preloadError", (event) => {
-    console.warn("Vite preload error detected, reloading fresh version...", event);
-    window.location.reload();
+    console.warn("Vite preload error detected:", event);
+    const RELOAD_KEY = "mating_preload_reload_ts";
+    const lastReload = parseInt(sessionStorage.getItem(RELOAD_KEY) || "0", 10);
+    const now = Date.now();
+
+    // Prevent infinite reload loops: at most 1 reload per 10 seconds
+    if (now - lastReload > 10000) {
+      sessionStorage.setItem(RELOAD_KEY, String(now));
+      console.info("Reloading fresh version after chunk loading error...");
+      window.location.reload();
+    } else {
+      console.error("Vite preload error persisted after reload. Suppressing reload loop.");
+    }
   });
 }
 
@@ -23,12 +34,27 @@ const queryClient = new QueryClient({
   },
 });
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <App />
-      </QueryClientProvider>
-    </ErrorBoundary>
-  </React.StrictMode>
-);
+const rootElement = document.getElementById("root");
+
+if (rootElement) {
+  // Mark app as booted so static HTML failsafe timeout does not trigger
+  if (typeof window !== "undefined") {
+    (window as any).__mating_mounted = true;
+  }
+  const preloader = document.getElementById("mating-preloader");
+  if (preloader) {
+    preloader.remove();
+  }
+
+  ReactDOM.createRoot(rootElement).render(
+    <React.StrictMode>
+      <ErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <App />
+        </QueryClientProvider>
+      </ErrorBoundary>
+    </React.StrictMode>
+  );
+} else {
+  console.error("Fatal: #root element not found in document");
+}
