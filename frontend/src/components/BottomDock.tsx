@@ -1,34 +1,106 @@
-import React from "react";
+import React, { useCallback, useRef } from "react";
 import { translations } from "../i18n";
-import { useAppStore } from "../state/useAppStore";
+import { ScreenTab, useAppStore } from "../state/useAppStore";
 import { triggerHaptic } from "../telegram/telegram";
 
+const TABS: ScreenTab[] = ["list", "stats", "settings"];
+
 export const BottomDock: React.FC = () => {
-  const { activeTab, setActiveTab, language, openSheet, closeSheet, isSheetOpen } = useAppStore();
+  const { activeTab, setActiveTab, language, openSheet, closeSheet, isSheetOpen, hapticsEnabled } = useAppStore();
   const t = translations[language];
+
+  const dockRef = useRef<HTMLElement>(null);
+  const isDragging = useRef(false);
+  const lastIndex = useRef(-1);
 
   const tabIndex = activeTab === "list" ? 0 : activeTab === "stats" ? 1 : 2;
 
-  const handleTabClick = (tab: "list" | "stats" | "settings") => {
-    triggerHaptic("selection");
-    // If sheet is open, close it first
+  // Exact pick() logic from index.html
+  const at = useCallback((clientX: number): number => {
+    const el = dockRef.current;
+    if (!el) return 0;
+    const r = el.getBoundingClientRect();
+    const pad = 6;
+    const n = 3;
+    const raw = Math.floor((clientX - r.left - pad) / ((r.width - 2 * pad) / n));
+    return Math.max(0, Math.min(n - 1, raw));
+  }, []);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLElement>) => {
+    if (e.button !== 0) return;
+    isDragging.current = true;
+    const el = dockRef.current;
+    if (el) {
+      el.classList.add("lift");
+      el.setPointerCapture(e.pointerId);
+    }
+    const idx = at(e.clientX);
+    lastIndex.current = idx;
+    if (el) {
+      el.style.setProperty("--i", String(idx));
+      el.style.setProperty("--tab-idx", String(idx));
+    }
+    if (hapticsEnabled) triggerHaptic("selection");
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLElement>) => {
+    if (!isDragging.current) return;
+    const idx = at(e.clientX);
+    if (idx !== lastIndex.current) {
+      lastIndex.current = idx;
+      const el = dockRef.current;
+      if (el) {
+        el.style.setProperty("--i", String(idx));
+        el.style.setProperty("--tab-idx", String(idx));
+      }
+      if (hapticsEnabled) triggerHaptic("selection");
+    }
+  };
+
+  const handlePointerUp = () => {
+    if (!isDragging.current) return;
+    isDragging.current = false;
+    const el = dockRef.current;
+    if (el) {
+      el.classList.remove("lift");
+    }
+    const finalIdx = lastIndex.current;
+    if (finalIdx >= 0 && finalIdx < TABS.length) {
+      if (isSheetOpen) closeSheet();
+      setActiveTab(TABS[finalIdx]);
+    }
+  };
+
+  const handlePointerCancel = () => {
+    if (!isDragging.current) return;
+    isDragging.current = false;
+    const el = dockRef.current;
+    if (el) {
+      el.classList.remove("lift");
+      el.style.setProperty("--i", String(tabIndex));
+      el.style.setProperty("--tab-idx", String(tabIndex));
+    }
+  };
+
+  const handleTabClick = (tab: ScreenTab) => {
+    if (hapticsEnabled) triggerHaptic("selection");
     if (isSheetOpen) closeSheet();
     setActiveTab(tab);
   };
 
   const handleFabClick = () => {
     if (isSheetOpen) {
-      triggerHaptic("selection");
+      if (hapticsEnabled) triggerHaptic("selection");
       closeSheet();
     } else {
-      triggerHaptic("medium");
+      if (hapticsEnabled) triggerHaptic("medium");
       openSheet("quick");
     }
   };
 
   return (
     <div className="chrome" id="chrome">
-      {/* FAB — only visible on list tab, morphs + ↔ × */}
+      {/* FAB — only visible on list tab, morphs + ↔ × with spring transition */}
       {activeTab === "list" && (
         <button
           className="fab press"
@@ -49,17 +121,29 @@ export const BottomDock: React.FC = () => {
         </button>
       )}
 
+      {/* Navigation Dock with Apple-like pick() drag selection & lens highlight */}
       <nav
         className="dock glass"
         id="dock"
+        ref={dockRef}
         aria-label="Навигация"
-        style={{ "--tab-idx": tabIndex } as React.CSSProperties}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        style={{
+          "--i": tabIndex,
+          "--tab-idx": tabIndex,
+        } as React.CSSProperties}
       >
-        <i className="lens" aria-hidden="true"></i>
+        <i className="lens" aria-hidden="true" />
 
         <button
           className={`tab ${activeTab === "list" ? "on" : ""}`}
-          onClick={() => handleTabClick("list")}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleTabClick("list");
+          }}
           aria-label={t.tabList}
           aria-current={activeTab === "list" ? "page" : undefined}
         >
@@ -73,7 +157,10 @@ export const BottomDock: React.FC = () => {
 
         <button
           className={`tab ${activeTab === "stats" ? "on" : ""}`}
-          onClick={() => handleTabClick("stats")}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleTabClick("stats");
+          }}
           aria-label={t.tabStats}
           aria-current={activeTab === "stats" ? "page" : undefined}
         >
@@ -85,7 +172,10 @@ export const BottomDock: React.FC = () => {
 
         <button
           className={`tab ${activeTab === "settings" ? "on" : ""}`}
-          onClick={() => handleTabClick("settings")}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleTabClick("settings");
+          }}
           aria-label={t.tabSettings}
           aria-current={activeTab === "settings" ? "page" : undefined}
         >

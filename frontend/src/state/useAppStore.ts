@@ -15,11 +15,14 @@ function getInitialTab(): ScreenTab {
   }
   return "list";
 }
+
 export type ThemeMode = "auto" | "light" | "dark";
 export type SheetMode = "quick" | "ai";
 export type AnimationStyle = "Minimal" | "Reduced" | "Normal" | "Expressive";
 export type GlassMode = "Full" | "Adaptive" | "Reduced" | "Minimal";
 export type HapticMode = "Off" | "Light" | "Normal";
+export type SpringCurve = "snappy" | "balanced" | "soft" | "linear";
+export type MotionPreset = "Apple-like" | "Minimal" | "Battery Saver" | "Custom";
 
 interface UndoToastData {
   id: string;
@@ -31,14 +34,40 @@ export interface AnimSetting {
   enabled: boolean;
   /** 0..100 intensity multiplier */
   intensity: number;
+  /** 100..600 ms duration */
+  duration: number;
+  /** Easing / spring curve preset */
+  curve: SpringCurve;
 }
+
+export const ANIM_KEYS = [
+  "fabMorph",
+  "sheetSpring",
+  "purchaseTransition",
+  "animatedTotal",
+  "animatedBudget",
+  "tabIndicator",
+  "checkboxSpring",
+  "swipeResistance",
+  "longPressMenu",
+  "editMorph",
+  "statusPill",
+  "headerMotion",
+  "keyboardSheet",
+  "listAddDelete",
+  "hapticFeedback",
+] as const;
+
+export type AnimKey = typeof ANIM_KEYS[number];
 
 /** Motion profile: 15 named animations + global settings */
 export interface MotionProfile {
+  preset: MotionPreset;
   animationStyle: AnimationStyle;
   glassMode: GlassMode;
   hapticMode: HapticMode;
   batterySaver: boolean;
+  intensity: number;
   // 15 animations
   fabMorph: AnimSetting;
   sheetSpring: AnimSetting;
@@ -57,38 +86,35 @@ export interface MotionProfile {
   hapticFeedback: AnimSetting;
 }
 
-const DEFAULT_MOTION_PROFILE: MotionProfile = {
+const DEFAULT_ANIM_SETTING: AnimSetting = {
+  enabled: true,
+  intensity: 100,
+  duration: 450,
+  curve: "snappy",
+};
+
+export const DEFAULT_MOTION_PROFILE: MotionProfile = {
+  preset: "Apple-like",
   animationStyle: "Normal",
   glassMode: "Adaptive",
   hapticMode: "Normal",
   batterySaver: false,
-  fabMorph: { enabled: true, intensity: 100 },
-  sheetSpring: { enabled: true, intensity: 100 },
-  purchaseTransition: { enabled: true, intensity: 100 },
-  animatedTotal: { enabled: true, intensity: 100 },
-  animatedBudget: { enabled: true, intensity: 100 },
-  tabIndicator: { enabled: true, intensity: 100 },
-  checkboxSpring: { enabled: true, intensity: 100 },
-  swipeResistance: { enabled: true, intensity: 100 },
-  longPressMenu: { enabled: true, intensity: 100 },
-  editMorph: { enabled: true, intensity: 100 },
-  statusPill: { enabled: true, intensity: 100 },
-  headerMotion: { enabled: true, intensity: 100 },
-  keyboardSheet: { enabled: true, intensity: 100 },
-  listAddDelete: { enabled: true, intensity: 100 },
-  hapticFeedback: { enabled: true, intensity: 100 },
-};
-
-const MINIMAL_MOTION_PROFILE: Partial<MotionProfile> = {
-  animationStyle: "Minimal",
-  glassMode: "Minimal",
-  batterySaver: true,
-  fabMorph: { enabled: false, intensity: 0 },
-  sheetSpring: { enabled: false, intensity: 0 },
-  purchaseTransition: { enabled: false, intensity: 0 },
-  listAddDelete: { enabled: false, intensity: 0 },
-  statusPill: { enabled: true, intensity: 50 },  // keep functional
-  tabIndicator: { enabled: true, intensity: 50 },  // keep functional
+  intensity: 100,
+  fabMorph: { enabled: true, intensity: 100, duration: 450, curve: "snappy" },
+  sheetSpring: { enabled: true, intensity: 100, duration: 600, curve: "snappy" },
+  purchaseTransition: { enabled: true, intensity: 100, duration: 400, curve: "snappy" },
+  animatedTotal: { enabled: true, intensity: 100, duration: 400, curve: "balanced" },
+  animatedBudget: { enabled: true, intensity: 100, duration: 700, curve: "snappy" },
+  tabIndicator: { enabled: true, intensity: 100, duration: 650, curve: "snappy" },
+  checkboxSpring: { enabled: true, intensity: 100, duration: 350, curve: "snappy" },
+  swipeResistance: { enabled: true, intensity: 100, duration: 450, curve: "snappy" },
+  longPressMenu: { enabled: true, intensity: 100, duration: 250, curve: "snappy" },
+  editMorph: { enabled: true, intensity: 100, duration: 400, curve: "snappy" },
+  statusPill: { enabled: true, intensity: 100, duration: 400, curve: "snappy" },
+  headerMotion: { enabled: true, intensity: 100, duration: 600, curve: "snappy" },
+  keyboardSheet: { enabled: true, intensity: 100, duration: 350, curve: "snappy" },
+  listAddDelete: { enabled: true, intensity: 100, duration: 350, curve: "snappy" },
+  hapticFeedback: { enabled: true, intensity: 100, duration: 200, curve: "snappy" },
 };
 
 function loadMotionProfile(): MotionProfile {
@@ -96,11 +122,36 @@ function loadMotionProfile(): MotionProfile {
     if (typeof localStorage !== "undefined") {
       const raw = localStorage.getItem("mating_motion_profile");
       if (raw) {
-        return { ...DEFAULT_MOTION_PROFILE, ...JSON.parse(raw) };
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          const profile: MotionProfile = { ...DEFAULT_MOTION_PROFILE };
+
+          if (parsed.preset) profile.preset = parsed.preset;
+          if (parsed.animationStyle) profile.animationStyle = parsed.animationStyle;
+          if (parsed.glassMode) profile.glassMode = parsed.glassMode;
+          if (parsed.hapticMode) profile.hapticMode = parsed.hapticMode;
+          if (typeof parsed.batterySaver === "boolean") profile.batterySaver = parsed.batterySaver;
+          if (typeof parsed.intensity === "number") profile.intensity = parsed.intensity;
+
+          // Safely copy each animation setting with fallbacks
+          ANIM_KEYS.forEach((key) => {
+            const rawSetting = parsed[key];
+            if (rawSetting && typeof rawSetting === "object") {
+              profile[key] = {
+                enabled: typeof rawSetting.enabled === "boolean" ? rawSetting.enabled : DEFAULT_MOTION_PROFILE[key].enabled,
+                intensity: typeof rawSetting.intensity === "number" ? rawSetting.intensity : DEFAULT_MOTION_PROFILE[key].intensity,
+                duration: typeof rawSetting.duration === "number" ? rawSetting.duration : DEFAULT_MOTION_PROFILE[key].duration,
+                curve: rawSetting.curve || DEFAULT_MOTION_PROFILE[key].curve,
+              };
+            }
+          });
+
+          return profile;
+        }
       }
     }
-  } catch {
-    // ignore
+  } catch (e) {
+    console.warn("Failed to parse saved motion profile, using default", e);
   }
   return { ...DEFAULT_MOTION_PROFILE };
 }
@@ -147,17 +198,12 @@ interface AppState {
   autoCategory: boolean;
   setAutoCategory: (enabled: boolean) => void;
 
-  // Motion Profile
+  // Motion Profile State
   motionProfile: MotionProfile;
   setMotionProfile: (profile: MotionProfile) => void;
   updateMotionProfile: (patch: Partial<MotionProfile>) => void;
-  updateAnimSetting: (key: keyof Pick<MotionProfile,
-    "fabMorph" | "sheetSpring" | "purchaseTransition" | "animatedTotal" |
-    "animatedBudget" | "tabIndicator" | "checkboxSpring" | "swipeResistance" |
-    "longPressMenu" | "editMorph" | "statusPill" | "headerMotion" |
-    "keyboardSheet" | "listAddDelete" | "hapticFeedback"
-  >, patch: Partial<AnimSetting>) => void;
-  applyMinimalPreset: () => void;
+  updateAnimSetting: (key: AnimKey, patch: Partial<AnimSetting>) => void;
+  applyPreset: (preset: MotionPreset) => void;
   resetMotionProfile: () => void;
 
   isSheetOpen: boolean;
@@ -338,23 +384,57 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateMotionProfile: (patch) => {
-    const next = { ...get().motionProfile, ...patch };
+    const current = get().motionProfile || DEFAULT_MOTION_PROFILE;
+    const next: MotionProfile = { ...current, ...patch, preset: patch.preset || "Custom" };
     saveMotionProfile(next);
     set({ motionProfile: next });
   },
 
   updateAnimSetting: (key, patch) => {
-    const current = get().motionProfile;
+    const current = get().motionProfile || DEFAULT_MOTION_PROFILE;
+    const currentSetting = current[key] || DEFAULT_ANIM_SETTING;
     const next: MotionProfile = {
       ...current,
-      [key]: { ...(current[key] as AnimSetting), ...patch },
+      preset: "Custom",
+      [key]: { ...currentSetting, ...patch },
     };
     saveMotionProfile(next);
     set({ motionProfile: next });
   },
 
-  applyMinimalPreset: () => {
-    const next: MotionProfile = { ...DEFAULT_MOTION_PROFILE, ...MINIMAL_MOTION_PROFILE } as MotionProfile;
+  applyPreset: (preset: MotionPreset) => {
+    let next: MotionProfile;
+
+    if (preset === "Apple-like") {
+      next = { ...DEFAULT_MOTION_PROFILE, preset: "Apple-like" };
+    } else if (preset === "Minimal") {
+      next = {
+        ...DEFAULT_MOTION_PROFILE,
+        preset: "Minimal",
+        animationStyle: "Minimal",
+        glassMode: "Minimal",
+        batterySaver: true,
+        intensity: 30,
+        fabMorph: { enabled: false, intensity: 0, duration: 150, curve: "linear" },
+        sheetSpring: { enabled: false, intensity: 0, duration: 200, curve: "linear" },
+        purchaseTransition: { enabled: false, intensity: 0, duration: 150, curve: "linear" },
+        listAddDelete: { enabled: false, intensity: 0, duration: 150, curve: "linear" },
+        statusPill: { enabled: true, intensity: 50, duration: 250, curve: "snappy" },
+        tabIndicator: { enabled: true, intensity: 50, duration: 250, curve: "snappy" },
+      };
+    } else if (preset === "Battery Saver") {
+      next = {
+        ...DEFAULT_MOTION_PROFILE,
+        preset: "Battery Saver",
+        animationStyle: "Reduced",
+        glassMode: "Minimal",
+        batterySaver: true,
+        intensity: 50,
+      };
+    } else {
+      next = { ...get().motionProfile, preset: "Custom" };
+    }
+
     saveMotionProfile(next);
     set({ motionProfile: next });
   },

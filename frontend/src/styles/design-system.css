@@ -6,24 +6,6 @@
  *   1) Content:  TONAL  (cards, panels, rows, statistics, settings, forms)
  *   2) Controls: GLASS  (header, bottom dock, FAB, bottom sheet) — max 3–4 visible
  *   3) Motion:   SPRING (interruptible physics, no linear transitions)
- *
- * Motion custom properties (overridden by JS motionProfile):
- *   --anim-fab-morph         : 1 | 0
- *   --anim-sheet-spring      : 1 | 0
- *   --anim-purchase          : 1 | 0
- *   --anim-total             : 1 | 0
- *   --anim-budget            : 1 | 0
- *   --anim-tab-indicator     : 1 | 0
- *   --anim-checkbox          : 1 | 0
- *   --anim-swipe             : 1 | 0
- *   --anim-longpress         : 1 | 0
- *   --anim-edit-morph        : 1 | 0
- *   --anim-status-pill       : 1 | 0
- *   --anim-header-motion     : 1 | 0
- *   --anim-keyboard-sheet    : 1 | 0
- *   --anim-list-add-delete   : 1 | 0
- *   --anim-haptic            : 1 | 0   (0=off, 1=light, 2=normal)
- *   --motion-intensity       : 0..100
  */
 
 /* ── EXACT CSS VARIABLES FROM index.html ── */
@@ -116,7 +98,13 @@
   --sheet: cubic-bezier(.32,.72,0,1);
   --gentle: cubic-bezier(.25,1,.4,1);
 
-  /* ── MOTION PROFILE DEFAULTS (overridden by JS) ── */
+  /* Configurable spring curves */
+  --spring-snappy: cubic-bezier(.34, 1.3, .64, 1);
+  --spring-balanced: cubic-bezier(.25, 1, .4, 1);
+  --spring-soft: cubic-bezier(.32, .72, 0, 1);
+  --spring-linear: linear;
+
+  /* Motion Profile Variables */
   --anim-fab-morph: 1;
   --anim-sheet-spring: 1;
   --anim-purchase: 1;
@@ -133,6 +121,13 @@
   --anim-list-add-delete: 1;
   --anim-haptic: 2;
   --motion-intensity: 100;
+
+  /* Per-animation duration variables */
+  --dur-fab: 450ms;
+  --dur-sheet: 600ms;
+  --dur-purchase: 400ms;
+  --dur-tab: 650ms;
+  --dur-list: 350ms;
 }
 
 /* Linear spring physics where supported */
@@ -140,6 +135,7 @@
   :root {
     --spring: linear(0,.05 2%,.25 6%,.6 12%,.9 19%,1.04 26%,1.06 31%,1.03 38%,.995 48%,.99 56%,1.004 70%,1);
     --bounce: linear(0,.009,.035 2.1%,.141,.281 6.7%,.723 12.9%,.938 16.7%,1.017,1.077,1.121,1.149 24.3%,1.159,1.163,1.161,1.154 29.9%,1.129 32.8%,1.051 39.6%,1.017 43.1%,.991,.977 51%,.974 53.8%,.975 57.1%,.997 69.8%,1.003 76.9%,1.004 91.4%,1);
+    --spring-snappy: var(--spring);
   }
 }
 
@@ -427,7 +423,6 @@ html.refract .glass {
   opacity: 1;
 }
 
-/* Fallback for low-end / no backdrop-filter */
 @supports not (backdrop-filter: blur(10px)) {
   .glass { background: var(--glass-solid); }
 }
@@ -655,7 +650,6 @@ html.refract .glass {
   overflow: hidden;
   border-radius: var(--r2);
   margin-bottom: 8px;
-  /* clip swipe backgrounds */
 }
 
 .swipe-bg {
@@ -701,7 +695,6 @@ html.refract .glass {
   position: relative;
   z-index: 1;
   will-change: transform;
-  /* transform set directly via JS ref */
 }
 
 /* ── SHOPPING ITEM ROW (TONAL, HIGH DENSITY) ── */
@@ -714,7 +707,6 @@ html.refract .glass {
   background: var(--n);
   color: var(--on-n);
   transition: transform .4s var(--spring), opacity .3s;
-  /* no margin-bottom: handled by swipe-wrapper */
   min-height: 52px;
 }
 
@@ -722,13 +714,13 @@ html.refract .glass {
   transform: scale(.98);
 }
 
-/* List enter/exit animations (driven by JS class changes) */
+/* List enter/exit animations */
 .item-row.entering {
-  animation: item-enter .35s var(--spring) forwards;
+  animation: item-enter var(--dur-list, .35s) var(--spring) forwards;
 }
 
 .item-row.exiting {
-  animation: item-exit .25s var(--gentle) forwards;
+  animation: item-exit var(--dur-list, .25s) var(--gentle) forwards;
   pointer-events: none;
 }
 
@@ -768,7 +760,7 @@ html.refract .glass {
 
 /* Purchase transition */
 .item-row.purchasing {
-  animation: purchase-anim .4s var(--spring) forwards;
+  animation: purchase-anim var(--dur-purchase, .4s) var(--spring) forwards;
 }
 
 @keyframes purchase-anim {
@@ -990,8 +982,8 @@ html.refract .glass {
 .fab {
   display: grid;
   place-items: center;
-  width: 56px;
-  height: 56px;
+  width: 58px;
+  height: 58px;
   margin: 0 4px 10px auto;
   border-radius: 20px;
   color: var(--on-primary);
@@ -1001,11 +993,12 @@ html.refract .glass {
   border: 1px solid rgba(255,255,255,.35);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 12px 24px color-mix(in srgb, var(--primary) 40%, transparent);
   transition:
-    transform .55s var(--spring),
+    transform var(--dur-fab, .55s) var(--spring),
     opacity .3s,
     border-radius .7s var(--bounce);
   flex-shrink: 0;
   overflow: hidden;
+  position: relative;
 }
 
 .fab.hidden {
@@ -1015,7 +1008,7 @@ html.refract .glass {
 }
 
 .fab:hover {
-  border-radius: 28px;
+  border-radius: 29px;
 }
 
 .fab:active {
@@ -1024,8 +1017,8 @@ html.refract .glass {
 }
 
 .fab svg {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   stroke-width: 2.2;
   position: absolute;
   transition: transform .45s var(--spring), opacity .3s;
@@ -1059,7 +1052,7 @@ html.refract .glass {
   height: 64px;
   border-radius: 32px;
   display: flex;
-  padding: 5px;
+  padding: 6px;
   touch-action: none;
   user-select: none;
   transform-origin: 50% 100%;
@@ -1068,7 +1061,7 @@ html.refract .glass {
 }
 
 .chrome.min .dock {
-  height: 50px;
+  height: 52px;
   transform: scale(.92);
 }
 
@@ -1123,20 +1116,28 @@ html.refract .glass {
   transform: scale(.88);
 }
 
-/* Sliding highlight lens inside dock */
+/* Sliding highlight lens inside dock: supports both --i and --tab-idx */
 .lens {
   position: absolute;
-  top: 5px;
-  bottom: 5px;
-  left: 5px;
-  width: calc((100% - 10px) / 3);
+  top: 6px;
+  bottom: 6px;
+  left: 6px;
+  width: calc((100% - 12px) / 3);
   border-radius: 26px;
   background: color-mix(in srgb, var(--primary) 16%, var(--glow));
   border: 1px solid var(--edge);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 4px 14px var(--sh);
-  transform: translateX(calc(var(--tab-idx, 0) * 100%));
-  transition: transform .65s var(--spring), background .3s;
+  transform: translateX(calc(var(--i, var(--tab-idx, 0)) * 100%));
+  transition: transform var(--dur-tab, .65s) var(--spring), background .3s;
   pointer-events: none;
+}
+
+/* Apple-style lift state during active touch drag across dock */
+.dock.lift .lens {
+  transform: translateX(calc(var(--i, var(--tab-idx, 0)) * 100%)) scale(1.14, 1.1);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  backdrop-filter: blur(4px) saturate(240%);
+  -webkit-backdrop-filter: blur(4px) saturate(240%);
 }
 
 /* ── SCRIM ── */
@@ -1168,7 +1169,7 @@ html.refract .glass {
   background: var(--glass2);
   visibility: hidden;
   transform: translate(-50%, 104%);
-  transition: transform .6s var(--sheet), visibility 0s .6s;
+  transition: transform var(--dur-sheet, .6s) var(--sheet), visibility 0s .6s;
   overflow-y: auto;
   scrollbar-width: none;
 }
@@ -1210,7 +1211,7 @@ html.refract .glass {
   margin: 4px 4px 12px;
 }
 
-/* ── SEGMENTED CONTROL ── */
+/* ── SEGMENTED CONTROL: supports both --k and --seg-idx ── */
 .seg {
   position: relative;
   display: grid;
@@ -1218,6 +1219,7 @@ html.refract .glass {
   background: var(--track);
   border-radius: 22px;
   padding: 4px;
+  touch-action: none;
   user-select: none;
   margin-bottom: 16px;
 }
@@ -1231,9 +1233,13 @@ html.refract .glass {
   border-radius: 18px;
   background: var(--thumb);
   box-shadow: 0 2px 8px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.5);
-  transform: translateX(calc(var(--seg-idx, 0) * 100%));
+  transform: translateX(calc(var(--k, var(--seg-idx, 0)) * 100%));
   transition: transform .55s var(--spring);
   pointer-events: none;
+}
+
+.seg.lift i {
+  transform: translateX(calc(var(--k, var(--seg-idx, 0)) * 100%)) scale(1.08);
 }
 
 .seg button {
@@ -1410,9 +1416,9 @@ html.refract .glass {
 /* ── SWITCH (iOS Style from index.html) ── */
 .sw {
   position: relative;
-  width: 50px;
-  height: 30px;
-  border-radius: 15px;
+  width: 52px;
+  height: 32px;
+  border-radius: 16px;
   background: var(--off);
   transition: background .3s;
   flex-shrink: 0;
@@ -1426,9 +1432,9 @@ html.refract .glass {
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 26px;
-  height: 26px;
-  border-radius: 13px;
+  width: 28px;
+  height: 28px;
+  border-radius: 14px;
   background: #fff;
   box-shadow: 0 2px 6px rgba(0,0,0,.25);
   transition: transform .55s var(--spring), width .25s var(--spring);
@@ -1439,11 +1445,11 @@ html.refract .glass {
 }
 
 .sw:active i {
-  width: 32px;
+  width: 36px;
 }
 
 .sw[aria-checked="true"]:active i {
-  transform: translateX(14px);
+  transform: translateX(12px);
 }
 
 /* ── SETTINGS SCREEN ── */
@@ -1584,7 +1590,7 @@ html.refract .glass {
 }
 
 .anim-list-body.open {
-  max-height: 1200px;
+  max-height: 1600px;
 }
 
 /* ── STATS PROGRESS BARS ── */
@@ -1685,7 +1691,8 @@ html.refract .glass {
   pointer-events: auto;
 }
 
-.undo-toast button {
+.undo-toast button,
+.undo-toast-btn {
   color: var(--primary);
   font-weight: 700;
   padding: 2px 6px;
@@ -1693,8 +1700,6 @@ html.refract .glass {
 }
 
 /* ── PERFORMANCE TIERS ── */
-
-/* perf-minimal: weak Android, battery saver mode */
 .perf-minimal .b {
   display: none !important;
 }
@@ -1709,21 +1714,18 @@ html.refract .glass {
   transition: opacity .2s !important;
 }
 
-/* glass-reduced: lighter blur, no refraction */
 .glass-reduced .glass {
   --blur: 12px !important;
   backdrop-filter: blur(12px) saturate(140%) !important;
   -webkit-backdrop-filter: blur(12px) saturate(140%) !important;
 }
 
-/* glass-minimal: solid fallback, no blur */
 .glass-minimal .glass {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   background: var(--glass-solid) !important;
 }
 
-/* compact-mode: tighter rows */
 .compact-mode .item-row {
   padding: 7px 12px;
   min-height: 44px;
@@ -1733,7 +1735,7 @@ html.refract .glass {
   padding: 8px 14px;
 }
 
-/* reduced-motion (manual setting or prefers-reduced-motion) */
+/* Reduced motion overrides */
 html.reduced-motion *,
 html.reduced-motion *::before,
 html.reduced-motion *::after {
@@ -1741,13 +1743,10 @@ html.reduced-motion *::after {
   transition-duration: .01ms !important;
 }
 
-/* System prefers reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: .01ms !important;
-    transition-duration: .01ms !important;
+  *, *::before, *::after {
+    transition: none !important;
+    animation: none !important;
   }
   .b { animation: none !important; }
 }
@@ -1804,7 +1803,6 @@ html.reduced-motion *::after {
     padding-left: 20px;
     padding-right: 20px;
   }
-
   .chrome {
     max-width: 460px;
   }

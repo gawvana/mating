@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ConflictError } from "../api/client";
 import { formatCurrency, Language, translations } from "../i18n";
@@ -8,6 +8,53 @@ import { ShoppingItem } from "../types";
 import { SwipeableItem } from "../components/SwipeableItem";
 
 const ALL_CATEGORY = "Все";
+
+// ── Smooth Animated Counter for Numbers ───────────────────────────────────────
+export const AnimatedCounter: React.FC<{
+  value: number;
+  formatter?: (val: number) => string;
+}> = ({ value, formatter }) => {
+  const [current, setCurrent] = useState(value);
+  const frameRef = useRef<number | null>(null);
+  const startVal = useRef(value);
+  const startTime = useRef(0);
+
+  useEffect(() => {
+    startVal.current = current;
+    startTime.current = performance.now();
+    const target = value;
+    const diff = target - startVal.current;
+
+    if (Math.abs(diff) < 0.1) {
+      setCurrent(target);
+      return;
+    }
+
+    const duration = 400; // ms
+
+    const tick = (now: number) => {
+      const elapsed = now - startTime.current;
+      const progress = Math.min(1, elapsed / duration);
+      // Spring-like ease-out (exponential)
+      const ease = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+      const nextVal = Math.round(startVal.current + diff * ease);
+      setCurrent(nextVal);
+
+      if (progress < 1) {
+        frameRef.current = requestAnimationFrame(tick);
+      } else {
+        setCurrent(target);
+      }
+    };
+
+    frameRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (frameRef.current) cancelAnimationFrame(frameRef.current);
+    };
+  }, [value]);
+
+  return <span>{formatter ? formatter(current) : current}</span>;
+};
 
 // ── Context menu for long press ──────────────────────────────────────────────
 interface CtxMenuProps {
@@ -21,16 +68,14 @@ interface CtxMenuProps {
 }
 
 const CtxMenu: React.FC<CtxMenuProps> = React.memo(({ item, top, left, onEdit, onToggle, onDelete, onClose }) => {
-  // Close on outside click
   const menuRef = useRef<HTMLDivElement>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const handle = (e: PointerEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose();
       }
     };
-    // slight delay so the pointerup that triggered long press doesn't immediately close it
     const t = setTimeout(() => document.addEventListener("pointerdown", handle), 50);
     return () => {
       clearTimeout(t);
@@ -38,9 +83,8 @@ const CtxMenu: React.FC<CtxMenuProps> = React.memo(({ item, top, left, onEdit, o
     };
   }, [onClose]);
 
-  // Clamp to viewport
-  const safeLeft = Math.min(left, window.innerWidth - 180);
-  const safeTop = Math.min(top, window.innerHeight - 200);
+  const safeLeft = Math.max(10, Math.min(left, window.innerWidth - 180));
+  const safeTop = Math.max(10, Math.min(top, window.innerHeight - 200));
 
   return (
     <div
@@ -89,10 +133,11 @@ const ItemRow: React.FC<ItemRowProps> = React.memo(({
   onOpenCtx,
   hapticsEnabled,
 }) => {
-  const t = translations[language as keyof typeof translations];
+  const t = translations[language as keyof typeof translations] || translations.ru;
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFired = useRef(false);
   const pressStartPos = useRef({ x: 0, y: 0 });
+  const [isPurchasing, setIsPurchasing] = useState(false);
 
   const handlePointerDown = (e: React.PointerEvent) => {
     pressStartPos.current = { x: e.clientX, y: e.clientY };
@@ -119,9 +164,24 @@ const ItemRow: React.FC<ItemRowProps> = React.memo(({
 
   const handlePointerUp = () => cancelLongPress();
 
+  const handleToggleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!longPressFired.current) {
+      if (hapticsEnabled) triggerHaptic("selection");
+      setIsPurchasing(true);
+      setTimeout(() => {
+        setIsPurchasing(false);
+        onToggle(item);
+      }, 150);
+    }
+  };
+
+  const safePrice = typeof item.price === "number" ? item.price : item.price ? parseFloat(String(item.price)) : null;
+  const safeQty = typeof item.quantity === "number" ? item.quantity : parseFloat(String(item.quantity)) || 1;
+
   return (
     <div
-      className={`item-row ${item.is_purchased ? "purchased" : ""}`}
+      className={`item-row ${item.is_purchased ? "purchased" : ""} ${isPurchasing ? "purchasing" : ""}`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -131,17 +191,11 @@ const ItemRow: React.FC<ItemRowProps> = React.memo(({
         onOpenCtx(item, e.clientX, e.clientY);
       }}
     >
-      {/* Circular check toggle */}
+      {/* Circular check toggle with spring checkmark draw-in */}
       <button
         type="button"
         className={`item-check ${item.is_purchased ? "checked" : ""}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (!longPressFired.current) {
-            if (hapticsEnabled) triggerHaptic("selection");
-            onToggle(item);
-          }
-        }}
+        onClick={handleToggleClick}
         aria-label={item.is_purchased ? "Вернуть в список" : "Отметить купленным"}
       >
         {item.is_purchased && (
@@ -155,7 +209,7 @@ const ItemRow: React.FC<ItemRowProps> = React.memo(({
       <div className="item-body">
         <div className="item-name">{item.name}</div>
         <div className="item-meta">
-          <span>{item.quantity} {item.unit}</span>
+          <span>{safeQty} {item.unit || "шт"}</span>
           {item.category && item.category !== "Другое" && (
             <span className="item-tag">{item.category}</span>
           )}
@@ -163,10 +217,10 @@ const ItemRow: React.FC<ItemRowProps> = React.memo(({
       </div>
 
       {/* Price */}
-      {item.price !== null && item.price !== undefined && (
+      {safePrice !== null && !isNaN(safePrice) && (
         <div className="item-price-col">
           <span className="item-price-val">
-            {formatCurrency(item.quantity * item.price, item.currency_code, language)}
+            {formatCurrency(safeQty * safePrice, item.currency_code || "UZS", language)}
           </span>
         </div>
       )}
@@ -179,7 +233,7 @@ const ItemRow: React.FC<ItemRowProps> = React.memo(({
           e.stopPropagation();
           if (!longPressFired.current) onDelete(item);
         }}
-        aria-label={t.delete ?? "Удалить"}
+        aria-label={t.delete || "Удалить"}
       >
         <svg viewBox="0 0 24 24" style={{ width: 16, height: 16 }}>
           <path d="M18 6L6 18M6 6l12 12" />
@@ -202,13 +256,13 @@ export const ListScreen: React.FC = () => {
     hapticsEnabled,
     motionProfile,
   } = useAppStore();
-  const t = translations[language];
+  const t = translations[language] || translations.ru;
 
   const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORY);
   const [purchasedOpen, setPurchasedOpen] = useState(true);
   const [ctxMenu, setCtxMenu] = useState<{ item: ShoppingItem; x: number; y: number } | null>(null);
 
-  const swipeEnabled = motionProfile.swipeResistance.enabled;
+  const swipeEnabled = motionProfile?.swipeResistance?.enabled ?? true;
 
   // Fetch items
   const {
@@ -317,12 +371,13 @@ export const ListScreen: React.FC = () => {
 
   const handleCloseCtx = useCallback(() => setCtxMenu(null), []);
 
-  // Group active and purchased items
+  // Group active and purchased items safely
   const { activeItems, purchasedItems, categories } = useMemo(() => {
-    const active = items.filter((i) => !i.is_purchased);
-    const purchased = items.filter((i) => i.is_purchased);
+    const safeList = Array.isArray(items) ? items : [];
+    const active = safeList.filter((i) => !i.is_purchased);
+    const purchased = safeList.filter((i) => i.is_purchased);
     const cats = new Set<string>();
-    items.forEach((it) => { if (it.category) cats.add(it.category); });
+    safeList.forEach((it) => { if (it.category) cats.add(it.category); });
     return {
       activeItems: active,
       purchasedItems: purchased,
@@ -343,30 +398,39 @@ export const ListScreen: React.FC = () => {
 
   return (
     <div style={{ paddingTop: 8 }}>
-      {/* Summary Strip */}
+      {/* Summary Strip with Animated Counters */}
       <div className="summary-strip">
         <div className="summary-item">
-          <span className="summary-val">{activeItems.length}</span>
-          <span className="summary-lbl">{t.summaryActive.replace("{count}", "").trim()}</span>
+          <span className="summary-val">
+            <AnimatedCounter value={activeItems.length} />
+          </span>
+          <span className="summary-lbl">
+            {(t.summaryActive || "{count} в списке").replace("{count}", "").trim()}
+          </span>
         </div>
 
         <div className="summary-div" />
 
         <div className="summary-item">
           <span className="summary-val" style={{ color: "var(--ok)" }}>
-            {purchasedItems.length}
+            <AnimatedCounter value={purchasedItems.length} />
           </span>
-          <span className="summary-lbl">{t.summaryPurchased.replace("{count}", "").trim()}</span>
+          <span className="summary-lbl">
+            {(t.summaryPurchased || "{count} куплено").replace("{count}", "").trim()}
+          </span>
         </div>
 
-        {stats && stats.total_spent > 0 && (
+        {stats && typeof stats.total_spent === "number" && stats.total_spent > 0 && (
           <>
             <div className="summary-div" />
             <div className="summary-item" style={{ textAlign: "right" }}>
               <span className="summary-val" style={{ color: "var(--primary)" }}>
-                {formatCurrency(stats.total_spent, stats.currency_code, language)}
+                <AnimatedCounter
+                  value={stats.total_spent}
+                  formatter={(v) => formatCurrency(v, stats.currency_code || "UZS", language)}
+                />
               </span>
-              <span className="summary-lbl">{t.monthlySpent}</span>
+              <span className="summary-lbl">{t.monthlySpent || "За месяц"}</span>
             </div>
           </>
         )}
@@ -393,7 +457,7 @@ export const ListScreen: React.FC = () => {
       {/* Loading state */}
       {isLoading && items.length === 0 && (
         <div style={{ padding: "24px 0", display: "grid", gap: 8 }}>
-          {[1, 2, 3].map(i => (
+          {[1, 2, 3].map((i) => (
             <div key={i} className="skeleton" style={{ height: 52, borderRadius: "var(--r2)" }} />
           ))}
         </div>
@@ -470,7 +534,9 @@ export const ListScreen: React.FC = () => {
                 setPurchasedOpen(!purchasedOpen);
               }}
             >
-              <span>{t.summaryPurchased.replace("{count}", "").trim()} ({filteredPurchased.length})</span>
+              <span>
+                {(t.summaryPurchased || "{count} куплено").replace("{count}", "").trim()} ({filteredPurchased.length})
+              </span>
               <svg
                 viewBox="0 0 24 24"
                 style={{
@@ -521,14 +587,14 @@ export const ListScreen: React.FC = () => {
         </div>
       )}
 
-      {/* Context (long-press) menu — rendered at document level via portal-like fixed positioning */}
+      {/* Context (long-press) menu */}
       {ctxMenu && (
         <CtxMenu
           item={ctxMenu.item}
           top={ctxMenu.y}
           left={ctxMenu.x}
           onEdit={() => {
-            // TODO: open edit sheet in future
+            openSheet("quick", ctxMenu.item.name);
           }}
           onToggle={() => handleToggle(ctxMenu.item)}
           onDelete={() => handleDelete(ctxMenu.item)}

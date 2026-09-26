@@ -76,15 +76,42 @@ export const AddSheet: React.FC = () => {
     }
   }, [name, autoCategory]);
 
-  // Focus & Escape handling
+  // Focus trap, Escape key, and inert management
   useEffect(() => {
     if (!isSheetOpen) return;
+
+    const appEl = document.getElementById("app");
+    const dockEl = document.getElementById("dock");
+
+    if (appEl) (appEl as any).inert = true;
+    if (dockEl) (dockEl as any).inert = true;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         closeSheet();
+        return;
+      }
+      if (e.key === "Tab" && sheetRef.current) {
+        const focusable = Array.from(
+          sheetRef.current.querySelectorAll<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          )
+        ).filter((n) => !n.hasAttribute("disabled") && n.offsetParent !== null);
+
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     };
+
     window.addEventListener("keydown", handleKeyDown);
 
     const timer = setTimeout(() => {
@@ -95,6 +122,8 @@ export const AddSheet: React.FC = () => {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       clearTimeout(timer);
+      if (appEl) (appEl as any).inert = false;
+      if (dockEl) (dockEl as any).inert = false;
     };
   }, [isSheetOpen, closeSheet]);
 
@@ -166,16 +195,14 @@ export const AddSheet: React.FC = () => {
     },
     onError: (err: any) => {
       if (hapticsEnabled) triggerHaptic("error");
-      alert(err.message || "Ошибка при добавлении списка");
+      alert(err.message || "Ошибка при пакетном добавлении товаров");
     },
   });
 
-  // AI Parse Handler
+  // AI text parsing handler
   const handleParseAI = async () => {
     if (!aiText.trim()) return;
-    if (hapticsEnabled) triggerHaptic("medium");
 
-    // Abort previous request if in flight
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -184,9 +211,9 @@ export const AddSheet: React.FC = () => {
 
     setIsAiLoading(true);
     setAiError(null);
+    if (hapticsEnabled) triggerHaptic("medium");
 
     try {
-      // 1. Try fast local deterministic parser first (0 ms)
       const localResults = parseShoppingTextDeterministically(aiText);
       if (localResults && localResults.length > 0) {
         setParsedItems(localResults);
@@ -195,7 +222,6 @@ export const AddSheet: React.FC = () => {
         return;
       }
 
-      // 2. Fall back to backend Gemini
       const resp = await api.parseAI(aiText, controller.signal);
       if (resp.items && resp.items.length > 0) {
         setParsedItems(resp.items);
@@ -244,33 +270,58 @@ export const AddSheet: React.FC = () => {
   const quickPrice = price ? parseFloat(price.replace(",", ".")) : null;
   const quickLineTotal = quickPrice ? quickQty * quickPrice : null;
 
-  // Pointer drag to dismiss header
-  const handlePointerDown = (e: React.PointerEvent) => {
+  // Pointer drag to dismiss header (Apple-like real-time background presentation)
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
     dragStartY.current = e.clientY;
-    dragStartTime.current = Date.now();
+    dragStartTime.current = e.timeStamp;
     currentDragY.current = 0;
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+
+    const sheet = sheetRef.current;
+    const app = document.getElementById("app");
+    if (sheet) sheet.style.transition = "none";
+    if (app) app.style.transition = "none";
   };
 
-  const handlePointerMove = (e: React.PointerEvent) => {
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (dragStartY.current === null || !sheetRef.current) return;
     const dy = e.clientY - dragStartY.current;
     currentDragY.current = dy;
-    if (dy > 0) {
-      sheetRef.current.style.transform = `translate(-50%, ${dy}px)`;
+
+    const sheet = sheetRef.current;
+    const app = document.getElementById("app");
+    const h = sheet.offsetHeight || 400;
+    const p = Math.max(0, Math.min(1, dy / h));
+
+    sheet.style.transform = `translate(-50%, ${dy < 0 ? dy * 0.12 : dy}px)`;
+    if (app) {
+      app.style.transform = `scale(${0.93 + 0.07 * p}) translateY(${12 * (1 - p)}px)`;
+      app.style.filter = `brightness(${0.82 + 0.18 * p})`;
     }
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     if (dragStartY.current === null || !sheetRef.current) return;
     const dy = currentDragY.current;
-    const elapsed = Date.now() - dragStartTime.current;
-    const velocity = dy / Math.max(1, elapsed);
+    const elapsed = Math.max(1, e.timeStamp - dragStartTime.current);
+    const velocity = dy / elapsed;
 
-    sheetRef.current.style.transform = "";
+    const sheet = sheetRef.current;
+    const app = document.getElementById("app");
+    if (sheet) {
+      sheet.style.transition = "";
+      sheet.style.transform = "";
+    }
+    if (app) {
+      app.style.transition = "";
+      app.style.transform = "";
+      app.style.filter = "";
+    }
+
     dragStartY.current = null;
 
-    if (dy > 100 || velocity > 0.6) {
+    if (dy > 110 || velocity > 0.6) {
       closeSheet();
     }
   };
@@ -292,7 +343,7 @@ export const AddSheet: React.FC = () => {
         aria-modal="true"
         aria-label={t.addTitle}
       >
-        {/* Drag Handle */}
+        {/* Drag Handle with real-time iOS scale & brightness presentation */}
         <div
           className="sheet-hd"
           onPointerDown={handlePointerDown}
@@ -308,8 +359,17 @@ export const AddSheet: React.FC = () => {
         {/* Title */}
         <h3>{t.addTitle}</h3>
 
-        {/* Mode Segmented Control (Быстрый ввод | AI-текст) */}
-        <div className="seg" style={{ "--seg-cols": 2, "--seg-idx": segIdx } as React.CSSProperties}>
+        {/* Mode Segmented Control: dual --k and --seg-idx */}
+        <div
+          className="seg"
+          style={
+            {
+              "--seg-cols": 2,
+              "--seg-idx": segIdx,
+              "--k": segIdx,
+            } as React.CSSProperties
+          }
+        >
           <i aria-hidden="true" />
           <button
             type="button"

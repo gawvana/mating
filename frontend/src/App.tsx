@@ -9,7 +9,7 @@ import { ListScreen } from "./screens/ListScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { StatsScreen } from "./screens/StatsScreen";
 import { getPendingMutations, removeMutation } from "./state/offlineQueue";
-import { useAppStore } from "./state/useAppStore";
+import { DEFAULT_MOTION_PROFILE, useAppStore } from "./state/useAppStore";
 import { initTelegramApp, setupTelegramBackButton } from "./telegram/telegram";
 
 export const App: React.FC = () => {
@@ -36,40 +36,48 @@ export const App: React.FC = () => {
     return setupTelegramBackButton(() => setActiveTab("list"), activeTab !== "list");
   }, [activeTab, setActiveTab]);
 
-  // ── Motion Profile → CSS Custom Properties ───────────────────────────────
+  // ── Motion Profile → CSS Custom Properties & Class Synchronization ────────
   useEffect(() => {
     const root = document.documentElement;
-    const p = motionProfile;
+    const p = motionProfile || DEFAULT_MOTION_PROFILE;
 
-    // Per-animation CSS vars (used by animation conditions)
-    root.style.setProperty("--anim-fab-morph", p.fabMorph.enabled ? "1" : "0");
-    root.style.setProperty("--anim-sheet-spring", p.sheetSpring.enabled ? "1" : "0");
-    root.style.setProperty("--anim-purchase", p.purchaseTransition.enabled ? "1" : "0");
-    root.style.setProperty("--anim-total", p.animatedTotal.enabled ? "1" : "0");
-    root.style.setProperty("--anim-budget", p.animatedBudget.enabled ? "1" : "0");
-    root.style.setProperty("--anim-tab-indicator", p.tabIndicator.enabled ? "1" : "0");
-    root.style.setProperty("--anim-checkbox", p.checkboxSpring.enabled ? "1" : "0");
-    root.style.setProperty("--anim-swipe", p.swipeResistance.enabled ? "1" : "0");
-    root.style.setProperty("--anim-longpress", p.longPressMenu.enabled ? "1" : "0");
-    root.style.setProperty("--anim-edit-morph", p.editMorph.enabled ? "1" : "0");
-    root.style.setProperty("--anim-status-pill", p.statusPill.enabled ? "1" : "0");
-    root.style.setProperty("--anim-header-motion", p.headerMotion.enabled ? "1" : "0");
-    root.style.setProperty("--anim-keyboard-sheet", p.keyboardSheet.enabled ? "1" : "0");
-    root.style.setProperty("--anim-list-add-delete", p.listAddDelete.enabled ? "1" : "0");
-    root.style.setProperty("--anim-haptic", String(
-      p.hapticFeedback.enabled ? (p.hapticMode === "Light" ? "1" : "2") : "0"
-    ));
-    root.style.setProperty("--motion-intensity", String(p.fabMorph.intensity));
+    // Per-animation CSS vars
+    root.style.setProperty("--anim-fab-morph", p.fabMorph?.enabled ? "1" : "0");
+    root.style.setProperty("--anim-sheet-spring", p.sheetSpring?.enabled ? "1" : "0");
+    root.style.setProperty("--anim-purchase", p.purchaseTransition?.enabled ? "1" : "0");
+    root.style.setProperty("--anim-total", p.animatedTotal?.enabled ? "1" : "0");
+    root.style.setProperty("--anim-budget", p.animatedBudget?.enabled ? "1" : "0");
+    root.style.setProperty("--anim-tab-indicator", p.tabIndicator?.enabled ? "1" : "0");
+    root.style.setProperty("--anim-checkbox", p.checkboxSpring?.enabled ? "1" : "0");
+    root.style.setProperty("--anim-swipe", p.swipeResistance?.enabled ? "1" : "0");
+    root.style.setProperty("--anim-longpress", p.longPressMenu?.enabled ? "1" : "0");
+    root.style.setProperty("--anim-edit-morph", p.editMorph?.enabled ? "1" : "0");
+    root.style.setProperty("--anim-status-pill", p.statusPill?.enabled ? "1" : "0");
+    root.style.setProperty("--anim-header-motion", p.headerMotion?.enabled ? "1" : "0");
+    root.style.setProperty("--anim-keyboard-sheet", p.keyboardSheet?.enabled ? "1" : "0");
+    root.style.setProperty("--anim-list-add-delete", p.listAddDelete?.enabled ? "1" : "0");
+    root.style.setProperty(
+      "--anim-haptic",
+      String(p.hapticFeedback?.enabled ? (p.hapticMode === "Light" ? "1" : "2") : "0")
+    );
+
+    // Duration variables
+    root.style.setProperty("--dur-fab", `${p.fabMorph?.duration || 450}ms`);
+    root.style.setProperty("--dur-sheet", `${p.sheetSpring?.duration || 600}ms`);
+    root.style.setProperty("--dur-purchase", `${p.purchaseTransition?.duration || 400}ms`);
+    root.style.setProperty("--dur-tab", `${p.tabIndicator?.duration || 650}ms`);
+    root.style.setProperty("--dur-list", `${p.listAddDelete?.duration || 350}ms`);
+    root.style.setProperty("--motion-intensity", String(p.intensity ?? 100));
 
     // Glass tier classes
     root.classList.remove("glass-full", "glass-adaptive", "glass-reduced", "glass-minimal");
-    root.classList.add(`glass-${p.glassMode.toLowerCase()}`);
+    const glassMode = p.glassMode?.toLowerCase() || "adaptive";
+    root.classList.add(`glass-${glassMode}`);
 
-    // Battery saver → perf-minimal
+    // Battery saver logic
     if (p.batterySaver) {
       root.classList.add("perf-minimal");
     } else {
-      // Only remove perf-minimal if it wasn't set by hardware detection
       const cores = navigator.hardwareConcurrency || 4;
       const memory = (navigator as unknown as { deviceMemory?: number }).deviceMemory || 4;
       if (cores > 2 && memory > 2) {
@@ -77,21 +85,20 @@ export const App: React.FC = () => {
       }
     }
 
-    // Animation style → body class
-    root.dataset.motionStyle = p.animationStyle.toLowerCase();
+    // Animation style dataset
+    root.dataset.motionStyle = p.animationStyle?.toLowerCase() || "normal";
 
-    // Reduced motion class when style is Minimal
     if (p.animationStyle === "Minimal" || p.batterySaver) {
       root.classList.add("reduced-motion");
+    } else {
+      root.classList.remove("reduced-motion");
     }
   }, [motionProfile]);
 
   // ── One-time initialization ──────────────────────────────────────────────
   useEffect(() => {
-    // 1. Telegram Mini App environment
     initTelegramApp();
 
-    // 2. Hardware Capability Detection
     const cores = navigator.hardwareConcurrency || 4;
     const memory = (navigator as unknown as { deviceMemory?: number }).deviceMemory || 4;
     const saveData = (navigator as unknown as { connection?: { saveData?: boolean } }).connection?.saveData || false;
@@ -105,7 +112,6 @@ export const App: React.FC = () => {
       document.documentElement.classList.add("perf-full");
     }
 
-    // 3. Apply persisted theme without flash
     const stored = localStorage.getItem("mating_theme");
     if (stored && stored !== "auto") {
       document.documentElement.setAttribute("data-theme", stored);
@@ -116,14 +122,11 @@ export const App: React.FC = () => {
       }
     }
 
-    // 4. Enable Chromium refraction enhancement (only on capable devices)
     const isChromium = /Chrom(e|ium)\//.test(navigator.userAgent) && !/Firefox/.test(navigator.userAgent);
     if (isChromium && cores > 2 && memory > 2) {
       document.documentElement.classList.add("refract");
     }
 
-    // 5. Pointer tracking for glass specular (--ang) and hover glow
-    //    ONLY on devices with a fine pointer (mouse/trackpad) — never on touch
     let cleanupPointer: (() => void) | undefined;
     if (window.matchMedia("(pointer: fine)").matches) {
       const handlePointerMove = (e: PointerEvent) => {
@@ -141,11 +144,9 @@ export const App: React.FC = () => {
       cleanupPointer = () => document.removeEventListener("pointermove", handlePointerMove);
     }
 
-    // 6. Apply compact mode from localStorage
     const compact = localStorage.getItem("mating_compact") === "true";
     if (compact) document.documentElement.classList.add("compact-mode");
 
-    // 7. Apply reduced-motion from localStorage
     const reducedMot = localStorage.getItem("mating_reduced_motion") === "true";
     if (reducedMot) document.documentElement.classList.add("reduced-motion");
 
@@ -154,8 +155,7 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // ── Scroll spy: compact nav + aura parallax ──────────────────────────────
-  // ONE rAF per scroll event — zero setState per scroll tick
+  // ── Scroll spy: compact nav + aura parallax (rAF throttled, no React setState) ──
   useEffect(() => {
     const appEl = appRef.current;
     const aurEl = aurRef.current;
@@ -169,10 +169,10 @@ export const App: React.FC = () => {
         const y = appEl.scrollTop;
         const d = y - scrollLastY.current;
 
-        // Compact nav on scroll (CSS class only, no React setState)
+        // Compact nav on scroll
         appEl.classList.toggle("sc", y > 30);
 
-        // Parallax aura blobs via CSS var (no React state)
+        // Parallax aura blobs via CSS var
         if (aurEl) aurEl.style.setProperty("--sy", String(y));
 
         // Hide/show bottom dock on scroll direction
@@ -226,7 +226,7 @@ export const App: React.FC = () => {
 
   return (
     <>
-      {/* SVG refraction filter (Chromium only, activated via html.refract class) */}
+      {/* SVG refraction filter for Chromium */}
       <svg className="defs" aria-hidden="true">
         <filter id="lg" x="0" y="0" width="100%" height="100%" colorInterpolationFilters="sRGB">
           <feImage
@@ -240,7 +240,7 @@ export const App: React.FC = () => {
 
       <div id="app" ref={appRef}>
         <div className="page">
-          {/* Aura decorative background blobs — CSS animation only, no RAF */}
+          {/* Parallax Aura blobs */}
           <div className="aur" aria-hidden="true" ref={aurRef}>
             <i className="b" style={{ "--c": "var(--p)", "--k": -0.12, left: -160, top: 40 } as React.CSSProperties} />
             <i className="b" style={{ "--c": "var(--t)", "--k": -0.2, right: -200, top: "22%" } as React.CSSProperties} />
@@ -260,10 +260,10 @@ export const App: React.FC = () => {
         </div>
       </div>
 
-      {/* Floating Bottom Chrome: FAB + Glass Dock */}
+      {/* Floating Bottom Chrome: FAB + Glass Dock with drag pick() and lens */}
       <BottomDock />
 
-      {/* Slide-up Add Sheet */}
+      {/* Slide-up Add Sheet with real-time iOS presentation */}
       <AddSheet />
 
       {/* Soft delete Undo Toast */}

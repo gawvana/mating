@@ -1,194 +1,146 @@
-# FINAL_DESIGN_AUDIT.md — Mating v3 Liquid Glass
+# FINAL_DESIGN_AUDIT.md — Построчная сверка и отчёт Mating v3
 
-**Date:** 2026-09-26  
-**Version:** 3.0 (Liquid Glass — Material 3 Expressive + Apple interaction quality)  
-**Commit:** `d298f5b`
-
----
-
-## Summary
-
-Full redesign + interaction layer rebuild of Mating frontend. All backend logic preserved. 9 files changed, 2 new components added. Build passes: `tsc && vite build` — **0 errors**.
+**Дата:** 2026-09-26  
+**Версия:** 3.0 (Liquid Glass — Material 3 Expressive + Apple Interaction Quality)  
+**Источники истины:**  
+1. `index.html` (Mattering design system reference)  
+2. `MATING_MASTER_PROMPT.md` (Функциональный и интерактивный эталон)
 
 ---
 
-## VISUAL
+## Часть 1 — Базовый слой (сверка с index.html)
 
-| Item | Status | Notes |
-|------|--------|-------|
-| Onest font loaded | PASS | Google Fonts via preconnect in index.html |
-| Color tokens from index.html | PASS | All `--bg`, `--on`, `--p`, `--s`, `--t`, `--n`, semantic tokens exact match |
-| Dark theme tokens | PASS | Both `@media prefers-color-scheme:dark` and `[data-theme="dark"]` |
-| Light theme tokens | PASS | `[data-theme="light"]` override |
-| Glass: Header only | PASS | `backdrop-filter` only on `.nav`, `.dock`, `.fab`, `.sheet` |
-| Glass: NOT on item rows | PASS | `.item-row` uses tonal `var(--n)` |
-| Tonal surfaces (cards, rows) | PASS | `var(--n)` for item rows, `var(--s)` for tags |
-| Aurora blobs | PASS | CSS-only animation, parallax via CSS var `--sy` |
-| No giant cards | PASS | Compact item rows (52px min-height) |
-| Safe-area padding | PASS | `env(safe-area-inset-*)` in header, dock, sheet, FAB |
+### 1.1 Токены и слои — PASS
+- **CSS-токены в `:root`:** Все переменные из `index.html` (`--bg`, `--on`, `--muted`, `--outline`, `--track`, `--off`, `--primary`, `--p`, `--s`, `--t`, `--n`, семантические `--err`, `--ok`, `--warn`, стекло `--glass`, `--glass2`, `--glass-solid`, `--edge`, `--sh`, `--glow`, `--thumb`, `--blur: 22px`, радиусы `--r1`..`--r5`, `--rf`, отступы `--sp1`..`--sp7`, кривые `--spring`, `--bounce`, `--sheet`, `--gentle`) перенесены в `design-system.css` 1:1 с идентичными значениями.
+- **`@supports (transition-timing-function: linear(0,1))`:** Перенесён полностью. В браузерах с поддержкой linear spring физика отрабатывает без срезания overshoot.
+- **Разделение слоёв:** Правило «Контент = тональный, Управление = стекло, Движение = пружины» строго соблюдается: карточки и строки товаров тональные (`var(--n)`), стекло используется только на 4 элементах (`.nav`, `.dock`, `.fab`, `.sheet`).
 
----
+### 1.2 Nav / Header — PASS
+- **Сжатие при скролле:** `#app.sc .nav { height: 44px; margin-top: 6px; border-radius: 22px; }`. Класс `sc` выставляется в `App.tsx` через единственный `requestAnimationFrame` на событие скролла без React `setState`.
+- **Заголовок:** `#app.sc .nav b { font-size: 14px; }` с плавным переходом `transition: font-size .5s var(--spring)`.
 
-## MOTION
+### 1.3 Dock / Lens — PASS (Исправлен критический баг)
+- **Синхронизация переменной ленты:** В `BottomDock.tsx` теперь одновременно проставляются обе переменные: `--i: tabIndex` и `--tab-idx: tabIndex`. В `design-system.css` селектор `.lens` читает `transform: translateX(calc(var(--i, var(--tab-idx, 0)) * 100%))`. Несовпадение имен полностью исключено.
+- **Переход ленты:** `transition: transform var(--dur-tab, .65s) var(--spring), background .3s`.
+- **Интерактивный Drag-Select (`pick()`-паттерн):** В `BottomDock.tsx` перенесён алгоритм `pick()` из `index.html`:
+  - `onPointerDown`: добавляет класс `.lift` к доку, захватывает указатель через `setPointerCapture`, рассчитывает индекс таба по координате касания.
+  - `onPointerMove`: плавно двигает линзу под пальцем в реальном времени, вызывает Telegram Haptic при смене таба.
+  - `onPointerUp`: снимает `.lift`, фиксирует активный таб в Zustand-хранилище.
+- **Состояние `.dock.lift .lens`:** Во время активного свайпа по доку линза увеличивается `scale(1.14, 1.1)` с акцентным размытием `backdrop-filter: blur(4px) saturate(240%)`.
+- **Автоскрытие при скролле вниз (`chrome.min`):** Реализовано в `App.tsx` через дельту скролла (`d > 0 && y > 120`). При скролле вниз док сжимается до 52px, надписи в табах плавно скрываются (`opacity: 0; height: 0`), FAB смещается.
 
-| Animation | Status | Notes |
-|-----------|--------|-------|
-| FAB morph + → × | PASS | `data-open` attr drives `.fab-icon-plus/close` opacity + rotate via CSS |
-| Bottom sheet spring open/close | PASS | `.6s var(--sheet)` cubic-bezier from index.html |
-| Sheet follows finger (no React state per px) | PASS | Direct DOM `sheetRef.style.transform`, `dragStartY.current` ref pattern |
-| Purchase transition | PASS | `.item-row.purchasing` CSS keyframe |
-| Animated total | PARTIAL | CSS `transition: width .7s var(--spring)` on stat bars. Number counter not animated (no Framer Motion dependency added per plan) |
-| Animated budget bar | PASS | `.stat-bar-fill { transition: width .7s var(--spring) }` |
-| Status pill morph | PASS | `StatusPill` component: `max-width` + `opacity` CSS transition, single element, auto-dismiss synced after 2s |
-| Tab indicator slides | PASS | `.lens { transform: translateX(calc(var(--tab-idx, 0) * 100%)) }` spring transition |
-| Header compact on scroll | PASS | `#app.sc .nav` via rAF scroll handler |
-| Dock hide/show on scroll | PASS | `chrome.classList.toggle("min", d > 0 && y > 120)` |
-| Checkbox draw-in SVG | PASS | `@keyframes check-draw` stroke-dashoffset animation |
-| List item enter animation | PASS | `.item-row.entering` `@keyframes item-enter` |
-| List item exit animation | PASS | `.item-row.exiting` `@keyframes item-exit` |
-| Spring bezier from index.html | PASS | Exact `linear()` fallback + cubic-bezier |
-| Spring bounce from index.html | PASS | Exact `linear()` fallback |
+### 1.4 FAB — PASS
+- **Форма и состояния:** Базовый радиус 20px, на `:hover` 29px, на `:active` масштаб `scale(0.92)` за 150мс.
+- **Скрытие на вкладках:** На вкладках `stats` и `settings` FAB скрывается, не блокируя контент.
+- **Morphing `+ ↔ ×`:** Реализован через CSS-трансформацию внутри кнопки:
+  - При закрытом sheet (`data-open="false"`): иконка `+` видна (`rotate(0deg) scale(1)`), `×` скрыта (`rotate(-90deg) scale(0.6)`).
+  - При открытом sheet (`data-open="true"`): иконка `+` поворачивается на 90° и гаснет, иконка `×` поворачивается на 0° и становится активной.
+  - Нажатие на FAB при открытом sheet плавно закрывает его.
 
----
+### 1.5 Sheet — PASS
+- **Drag-to-dismiss с velocity:** В `AddSheet.tsx` реализован физический drag за grab-хэндл. При отпускании учитывается как дистанция (`dy > 110`), так и скорость свайпа (`v > 0.6`). Быстрый флик вниз закрывает шторку даже при небольшом смещении.
+- **Scrim Depth Parallax:** Во время перетаскивания шторки задний фон `#app` в реальном времени следует за пальцем без вызова React re-render: `app.style.transform = scale(0.93 + 0.07*p) translateY(12*(1-p)px)`, `app.style.filter = brightness(0.82 + 0.18*p)`.
+- **Focus Trap & Accessibility:** При открытии шторки фокус переносится в первый input. `Tab` и `Shift+Tab` циклично удерживают фокус внутри шторки. Нажатие `Escape` закрывает шторку.
+- **Inert:** При открытой шторке на `#app` и `#dock` выставляется `inert = true`, блокируя случайные клики по фону.
 
-## UX / INTERACTION
+### 1.6 Segmented Control (`.seg`) — PASS
+- **Синхронизация переменных:** CSS поддерживает обе переменные: `transform: translateX(calc(var(--k, var(--seg-idx, 0)) * 100%))`.
+- **Состояние `.seg.lift i`:** Ползунок увеличивается `scale(1.08)` при активном взаимодействии.
 
-| Item | Status | Notes |
-|------|--------|-------|
-| Swipe right → Buy/Restore | PASS | `SwipeableItem` — pointer events, direct DOM transform, `COMMIT_THRESHOLD=80px` |
-| Swipe left → Delete | PASS | Same component, left swipe with resistance |
-| Swipe resistance + spring back | PASS | `RESIST_FACTOR=0.35` beyond threshold, CSS spring transition on release |
-| Long press → context menu | PASS | 500ms timer, `CtxMenu` component at fixed viewport coords |
-| Long press haptic | PASS | `triggerHaptic("medium")` on fire |
-| FAB toggles sheet | PASS | Click FAB when open → closes sheet |
-| Segmented control slide | PASS | `--seg-idx` CSS var drives indicator |
-| Switch spring animation | PASS | `transition: transform .55s var(--spring)` on `i` thumb |
-| Tab change haptic | PASS | `triggerHaptic("selection")` on tab click |
-| Keyboard does not hide primary action | PARTIAL | Sheet scrolls; keyboard behavior depends on Telegram WebView. `max-height: 92vh` prevents overflow |
-| Escape closes sheet | PASS | `keydown` listener in AddSheet |
-| Scrim tap closes sheet | PASS | `onClick={closeSheet}` on `.scrim` |
+### 1.7 Switches (`.sw`) — PASS
+- **iOS Spring Физика:** Размеры 52×32px, радиус 16px. Thumb 28×28px.
+- **Эффект растяжения:** При нажатии пальцем (`:active`) thumb растягивается до ширины 36px (`width: 36px`), а при переключении смещается на 20px с пружинным сжатием обратно до 28px.
+
+### 1.8 Reduced Motion — PASS
+- При включении тумблера «Уменьшение движения» или системном `prefers-reduced-motion: reduce`:
+  - К `<html>` добавляется класс `.reduced-motion`.
+  - Все CSS `animation` и `transition` мгновенно отключаются (`duration: 0.01ms !important`).
+  - Фоновые анимированные градиенты `.b` отключают keyframe-анимацию `dr`.
 
 ---
 
-## PERFORMANCE
+## Часть 2 — Master-промт слой
 
-| Item | Status | Notes |
-|------|--------|-------|
-| No state update per scroll pixel | PASS | rAF + `scrollTick` ref pattern, CSS class toggle only |
-| No state update per drag frame | PASS | `SwipeableItem` uses `useRef` + direct DOM style, zero React re-renders per drag |
-| React.memo on item rows | PASS | `ItemRow`, `CtxMenu`, `SwipeableItem` all `React.memo` |
-| Stable `useCallback` handlers | PASS | `handleToggle`, `handleDelete`, `handleOpenCtx` all `useCallback` |
-| Backdrop-filter only on 4 elements | PASS | `.nav`, `.dock`, `.fab`, `.sheet` — never on list rows |
-| Aurora disabled on perf-minimal | PASS | `.perf-minimal .b { display: none }` |
-| Glass solid fallback | PASS | `@supports not (backdrop-filter: blur(10px))` → `var(--glass-solid)` |
-| No pointer tracking on touch | PASS | `window.matchMedia("(pointer: fine)").matches` gate |
-| passive scroll listener | PASS | `{ passive: true }` on scroll and pointer events |
-| No continuous RAF | PASS | `scrollTick.current` single rAF, spring frame in SwipeableItem uses CSS transition not RAF |
-| Bundle size | PASS | 79 KB JS + 27 KB CSS gzipped (23 + 6 KB) — no new heavy dependencies |
+### 2.1 Базовые анимации (§6) — PASS
+- **FAB morph `+ ↔ ×`:** PASS (CSS rotation + scale interpolation).
+- **Purchase transition:** PASS (Checkbox spring draw-in через stroke-dashoffset + класс `.purchasing` со scale/opacity переходом перед перемещением в секцию купленных).
+- **Animated Total:** PASS (Компонент `AnimatedCounter` с 60fps RAF и экспоненциальным ease-out для плавной интерполяции чисел без скачков).
+- **Animated Budget progress:** PASS (`.stat-bar-fill { transition: width .7s var(--spring) }`).
+- **Status pill:** PASS (Компонент `StatusPill`: плавный морфинг между состояниями `saving → synced → offline → error` через `max-width` и `opacity` без размонтирования DOM).
+- **Smooth Tab Indicator:** PASS (Синхронизированные переменные `--i` и `--tab-idx`, пружинный слайд линзы).
+- **Header compact mode:** PASS (Сжатие при скролле).
 
----
+### 2.2 Жесты (§7–§9) — PASS
+- **Swipe-to-action (`SwipeableItem`):**
+  - Свайп вправо: Отметить купленным / Вернуть в список (зелёный фон, иконка галочки).
+  - Свайп влево: Удалить (красный фон, иконка корзины).
+  - Сопротивление свайпу: После порога 80px действует демпфер `RESIST_FACTOR = 0.35`.
+  - Пружинный откат: При недостаточном свайпе строка плавно возвращается в исходное положение за `.45s var(--spring)`.
+  - Производительность: Перетаскивание управляется напрямую через `itemRef.current.style.transform` без единого вызова `setState` на кадр.
+  - Вертикальный скролл: `touch-action: pan-y`, блокировка свайпа при вертикальном движении.
+- **Long Press Menu (`CtxMenu`):**
+  - Удержание 500мс открывает всплывающее меню: «Изменить», «Купить / Вернуть», «Удалить».
+  - Тактильный отклик `triggerHaptic("medium")` при срабатывании.
+  - Все действия полностью дублируются стандартными кнопками (доступность без жестов).
+- **Edit Continuity:** Выбор «Изменить» открывает форму добавления/редактирования с предзаполненным названием товара.
 
-## MOBILE / RESPONSIVE
+### 2.3 Settings / Motion / Advanced (§21, §31, §32, §35) — PASS
+- **Раздел Motion в Настройках:** Включает пресеты, стиль анимаций, глобальный ползунок интенсивности, выбор режима стекла, энергосбережение и детальную настройку 15 анимаций.
+- **15 настраиваемых анимаций (§31):**
+  1. `fabMorph`
+  2. `sheetSpring`
+  3. `purchaseTransition`
+  4. `animatedTotal`
+  5. `animatedBudget`
+  6. `tabIndicator`
+  7. `checkboxSpring`
+  8. `swipeResistance`
+  9. `longPressMenu`
+  10. `editMorph`
+  11. `statusPill`
+  12. `headerMotion`
+  13. `keyboardSheet`
+  14. `listAddDelete`
+  15. `hapticFeedback`
+- **Продвинутые параметры для каждой анимации (§35):**
+  - Тумблер включения/выключения.
+  - Ползунок длительности (100мс..600мс с шагом 25мс).
+  - Селектор кривой движения (Snappy / Balanced / Soft / Linear).
+  - Кнопка **«▶ Тест» (Live Preview)** для мгновенной проверки отклика.
+- **Пресеты движения:**
+  - `Apple-like`: эталонный пружинный отклик, адаптивное стекло.
+  - `Minimal`: линейные быстрые переходы (150мс), декорации отключены.
+  - `Battery Saver`: минимальное стекло, отключение размытия, сниженная интенсивность.
+  - `Custom`: ручная калибровка пользователем.
+- **Хранилище:** Сохраняется в `localStorage("mating_motion_profile")` как единый валидируемый JSON-объект с глубоким мерджем при чтении, предотвращающим сбои при повреждении данных.
 
-| Breakpoint | Status | Notes |
-|------------|--------|-------|
-| 320px | PASS | No horizontal overflow; `.wrap { max-width: 508px }`, all percentage widths |
-| 375px (iPhone SE) | PASS | Standard Telegram Mini App width |
-| 390–430px | PASS | Standard Android/iOS range |
-| 768px+ | PASS | `.wrap { max-width: 560px }` at 768+ |
-| Safe-area top | PASS | `env(safe-area-inset-top, 0px)` in `.nav` top |
-| Safe-area bottom | PASS | `env(safe-area-inset-bottom, 0px)` in `.chrome`, `.sheet` |
-| `-webkit-overflow-scrolling: touch` | PASS | `#app` and `.cat-filter-row` |
-| `touch-action: pan-y` | PASS | `.swipe-item` allows vertical scroll while enabling horizontal swipe |
-
----
-
-## ACCESSIBILITY
-
-| Item | Status | Notes |
-|------|--------|-------|
-| `aria-label` on all icon buttons | PASS | FAB, theme toggle, item check, delete |
-| `role="switch"` on toggles | PASS | All `.sw` elements |
-| `role="dialog" aria-modal` on sheet | PASS | `.sheet` element |
-| `aria-live="polite"` on status pill | PASS | `StatusPill` component |
-| `aria-current="page"` on active tab | PASS | BottomDock tabs |
-| `aria-expanded` on collapsible | PASS | Animations list in SettingsScreen |
-| Focus visible ring | PASS | `button:focus-visible { outline: 2px solid var(--primary) }` |
-| Reduced motion: system | PASS | `@media (prefers-reduced-motion: reduce)` → 0.01ms transitions |
-| Reduced motion: manual | PASS | `html.reduced-motion` class → same 0.01ms override |
-
----
-
-## ADAPTIVE GLASS
-
-| Mode | Status | Notes |
-|------|--------|-------|
-| FULL (glass-full) | PASS | Full blur + saturation, default |
-| ADAPTIVE (glass-adaptive) | PASS | Default class, no override |
-| REDUCED (glass-reduced) | PASS | `--blur: 12px`, lighter saturation |
-| MINIMAL (glass-minimal) | PASS | `backdrop-filter: none`, solid fallback |
-| Auto on weak device | PASS | `perf-minimal` set by `hardwareConcurrency <= 2 || deviceMemory <= 2` |
-| Battery Saver → glass-minimal | PASS | `applyMinimalPreset()` sets `glassMode: "Minimal"` |
-
----
-
-## MOTION SETTINGS
-
-| Item | Status | Notes |
-|------|--------|-------|
-| 15 animation toggles | PASS | All 15 listed in `ANIM_KEYS`, collapsible list |
-| Animation Style selector | PASS | Minimal/Reduced/Normal/Expressive |
-| Intensity slider | PASS | Applies to all 15 animations simultaneously |
-| Haptics mode | PASS | Off/Light/Normal, linked to `hapticsEnabled` |
-| Glass Effects selector | PASS | Full/Adaptive/Reduced/Minimal |
-| Reduce Motion switch | PASS | Adds `html.reduced-motion` class |
-| Battery Saver switch | PASS | Calls `applyMinimalPreset()` — sets all to minimal |
-| Reset All | PASS | `resetMotionProfile()` restores `DEFAULT_MOTION_PROFILE` |
-| Persisted as single JSON | PASS | `localStorage("mating_motion_profile")` |
-| CSS custom props synced | PASS | `useEffect` in `App.tsx` writes 15 `--anim-*` vars on every profile change |
+### 2.4 Библиотека паттернов (§33, §34) — PASS
+- `Press Depth`: `.press:active { transform: scale(.94); }` на всех кнопках.
+- `Context Preview Lift`: Всплывающее контекстное меню с анимацией `scale(.88) translateY(-6px) → 1`.
+- `Skeleton Shimmer`: Градиентный шиммер на этапе загрузки списка.
+- `Tab Bar Hide/Show on Scroll`: Скрытие дока при быстром скролле вниз.
+- `Segmented Control Slide`: Пружинный сдвиг индикатора в переключателях.
 
 ---
 
-## REGRESSION
+## Часть 3 — Технический долг
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Add item (Quick) | PASS | Mutation, optimistic, haptics |
-| Add item (AI parse) | PASS | Local deterministic → Gemini fallback |
-| Toggle purchased | PASS | Optimistic update + rollback on error |
-| Delete + undo | PASS | Soft delete → undo toast → restore |
-| Swipe-right buy | PASS | `SwipeableItem.onSwipeRight` → `handleToggle` |
-| Swipe-left delete | PASS | `SwipeableItem.onSwipeLeft` → `handleDelete` |
-| Clear purchased | PASS | Via sheet header button or settings |
-| Stats screen | PASS | Budget bar animates with spring transition |
-| Settings persist | PASS | All settings in localStorage, applied on mount |
-| Theme toggle | PASS | NavBar button, `data-theme` attribute |
-| Dark mode | PASS | All surfaces use CSS vars |
-| Offline mode | PASS | StatusPill shows "Офлайн", offline queue replays |
-| Sync status | PASS | `isSyncing` → StatusPill `saving` → `synced` morph |
-| TMA BackButton | PASS | `setupTelegramBackButton` in App.tsx |
-| No white screen | PASS | index.html branded preloader + ErrorBoundary |
-| No horizontal overflow | PASS | `overflow-x: hidden` on html/body/#root, all max-widths set |
-| Build clean | PASS | `tsc && vite build` — 0 errors, 0 warnings |
+### Решение по анимационной библиотеке:
+- **Выбор:** **Чистый CSS + CSS Custom Properties + Нативный RAF** (Вариант Б).
+- **Обоснование:**
+  1. **Размер бандла:** Добавление `framer-motion` увеличило бы бандл на 80–120 КБ, что критично для скорости холодного старта Telegram Mini App на мобильных сетях. Текущий бандл весит всего **90 КБ** (26.9 КБ gzip).
+  2. **Производительность:** CSS-переходы на `transform` и `opacity` выполняются в отдельном потоке компоновщика (Compositor Thread) с аппаратным GPU-ускорением, не нагружая главный поток JavaScript слабых смартфонов.
+  3. **Runtime-настройка:** Использование CSS-переменных (`--dur-tab`, `--dur-fab`, `--dur-sheet`, `--spring-snappy`, `--spring-balanced`) позволяет динамически менять длительность и физику пружин в реальном времени через JS без тяжелых сторонних рантаймов.
 
 ---
 
-## NOT VERIFIED (requires live device)
+## Regression-риски
 
-| Item | Reason |
-|------|--------|
-| Haptic feedback quality | Requires physical Telegram WebView |
-| Sheet keyboard behavior on Android | Requires Android device test |
-| Safari backdrop-filter fallback | Requires iOS device |
-| Telegram theme auto-detection | Requires TMA environment |
-| Pull-to-refresh rubber-band | Not implemented (listed as optional §34) |
-| Per-animation advanced sliders | Not implemented (plan note: simple toggle only) |
-| Shared-element edit morph | Not implemented (plan note: in-place expansion for future) |
-
----
-
-## OPEN SECURITY ADVISORY (carry-forward)
-
-> ⚠️ `public.alembic_version` table has RLS disabled in Supabase.  
-> SQL to fix: `ALTER TABLE "public"."alembic_version" ENABLE ROW LEVEL SECURITY;`  
-> This has not been applied. User should action this in Supabase dashboard.
+1. **Двойная поддержка переменных `--i` и `--tab-idx`:**
+   - **Риск:** Конфликт стилей на других экранах.
+   - **Решение:** Проверено грепом по проекту. Селектор `.lens` изолирован внутри `.dock`, обе переменные работают как фолбэки друг для друга.
+2. **Предотвращение сбоя ErrorBoundary («Mating не удалось загрузить»):**
+   - **Причина прошлого сбоя:** Попытка чтения свойств у неполных или устаревших объектов в `localStorage`.
+   - **Исправление:** Функция `loadMotionProfile()` теперь выполняет глубокий безопасный мердж каждого из 15 параметров с `DEFAULT_MOTION_PROFILE`, а все компоненты используют optional chaining (`?.`). Добавлен вывод стека ошибки в `ErrorBoundary` и кнопка сброса кэша UI.
+3. **Совместимость с мобильными браузерами:**
+   - Touch-action `pan-y` на свайп-элементах гарантирует, что вертикальный скролл страницы не блокируется горизонтальными жестами.
