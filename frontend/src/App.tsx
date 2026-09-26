@@ -14,7 +14,7 @@ import { initTelegramApp, setupTelegramBackButton } from "./telegram/telegram";
 
 export const App: React.FC = () => {
   const queryClient = useQueryClient();
-  const { activeTab, setActiveTab, setOffline, setSyncing } = useAppStore();
+  const { activeTab, setActiveTab, setOffline, setSyncing, motionProfile } = useAppStore();
   const appRef = useRef<HTMLDivElement>(null);
   const aurRef = useRef<HTMLDivElement>(null);
   const scrollLastY = useRef(0);
@@ -36,12 +36,62 @@ export const App: React.FC = () => {
     return setupTelegramBackButton(() => setActiveTab("list"), activeTab !== "list");
   }, [activeTab, setActiveTab]);
 
+  // ── Motion Profile → CSS Custom Properties ───────────────────────────────
+  useEffect(() => {
+    const root = document.documentElement;
+    const p = motionProfile;
+
+    // Per-animation CSS vars (used by animation conditions)
+    root.style.setProperty("--anim-fab-morph", p.fabMorph.enabled ? "1" : "0");
+    root.style.setProperty("--anim-sheet-spring", p.sheetSpring.enabled ? "1" : "0");
+    root.style.setProperty("--anim-purchase", p.purchaseTransition.enabled ? "1" : "0");
+    root.style.setProperty("--anim-total", p.animatedTotal.enabled ? "1" : "0");
+    root.style.setProperty("--anim-budget", p.animatedBudget.enabled ? "1" : "0");
+    root.style.setProperty("--anim-tab-indicator", p.tabIndicator.enabled ? "1" : "0");
+    root.style.setProperty("--anim-checkbox", p.checkboxSpring.enabled ? "1" : "0");
+    root.style.setProperty("--anim-swipe", p.swipeResistance.enabled ? "1" : "0");
+    root.style.setProperty("--anim-longpress", p.longPressMenu.enabled ? "1" : "0");
+    root.style.setProperty("--anim-edit-morph", p.editMorph.enabled ? "1" : "0");
+    root.style.setProperty("--anim-status-pill", p.statusPill.enabled ? "1" : "0");
+    root.style.setProperty("--anim-header-motion", p.headerMotion.enabled ? "1" : "0");
+    root.style.setProperty("--anim-keyboard-sheet", p.keyboardSheet.enabled ? "1" : "0");
+    root.style.setProperty("--anim-list-add-delete", p.listAddDelete.enabled ? "1" : "0");
+    root.style.setProperty("--anim-haptic", String(
+      p.hapticFeedback.enabled ? (p.hapticMode === "Light" ? "1" : "2") : "0"
+    ));
+    root.style.setProperty("--motion-intensity", String(p.fabMorph.intensity));
+
+    // Glass tier classes
+    root.classList.remove("glass-full", "glass-adaptive", "glass-reduced", "glass-minimal");
+    root.classList.add(`glass-${p.glassMode.toLowerCase()}`);
+
+    // Battery saver → perf-minimal
+    if (p.batterySaver) {
+      root.classList.add("perf-minimal");
+    } else {
+      // Only remove perf-minimal if it wasn't set by hardware detection
+      const cores = navigator.hardwareConcurrency || 4;
+      const memory = (navigator as unknown as { deviceMemory?: number }).deviceMemory || 4;
+      if (cores > 2 && memory > 2) {
+        root.classList.remove("perf-minimal");
+      }
+    }
+
+    // Animation style → body class
+    root.dataset.motionStyle = p.animationStyle.toLowerCase();
+
+    // Reduced motion class when style is Minimal
+    if (p.animationStyle === "Minimal" || p.batterySaver) {
+      root.classList.add("reduced-motion");
+    }
+  }, [motionProfile]);
+
   // ── One-time initialization ──────────────────────────────────────────────
   useEffect(() => {
     // 1. Telegram Mini App environment
     initTelegramApp();
 
-    // 2. Hardware Capability Detection (60 FPS on low-end, full shaders on high-end)
+    // 2. Hardware Capability Detection
     const cores = navigator.hardwareConcurrency || 4;
     const memory = (navigator as unknown as { deviceMemory?: number }).deviceMemory || 4;
     const saveData = (navigator as unknown as { connection?: { saveData?: boolean } }).connection?.saveData || false;
@@ -61,7 +111,6 @@ export const App: React.FC = () => {
       document.documentElement.setAttribute("data-theme", stored);
     } else if (stored === "auto" || !stored) {
       document.documentElement.removeAttribute("data-theme");
-      // Follow Telegram color scheme if available
       if (window.Telegram?.WebApp?.colorScheme) {
         document.documentElement.setAttribute("data-theme", window.Telegram.WebApp.colorScheme);
       }
@@ -73,9 +122,8 @@ export const App: React.FC = () => {
       document.documentElement.classList.add("refract");
     }
 
-    // 5. Pointer tracking for glass specular (--ang) and hover glow (--mx, --my)
-    //    CRITICAL: Only attach on devices with a fine pointer (mouse/trackpad).
-    //    Touch screens should never run pointer tracking to preserve 60 FPS mobile scrolls.
+    // 5. Pointer tracking for glass specular (--ang) and hover glow
+    //    ONLY on devices with a fine pointer (mouse/trackpad) — never on touch
     let cleanupPointer: (() => void) | undefined;
     if (window.matchMedia("(pointer: fine)").matches) {
       const handlePointerMove = (e: PointerEvent) => {
@@ -92,6 +140,14 @@ export const App: React.FC = () => {
       document.addEventListener("pointermove", handlePointerMove, { passive: true });
       cleanupPointer = () => document.removeEventListener("pointermove", handlePointerMove);
     }
+
+    // 6. Apply compact mode from localStorage
+    const compact = localStorage.getItem("mating_compact") === "true";
+    if (compact) document.documentElement.classList.add("compact-mode");
+
+    // 7. Apply reduced-motion from localStorage
+    const reducedMot = localStorage.getItem("mating_reduced_motion") === "true";
+    if (reducedMot) document.documentElement.classList.add("reduced-motion");
 
     return () => {
       if (cleanupPointer) cleanupPointer();
@@ -113,15 +169,19 @@ export const App: React.FC = () => {
         const y = appEl.scrollTop;
         const d = y - scrollLastY.current;
 
-        // Compact nav on scroll
+        // Compact nav on scroll (CSS class only, no React setState)
         appEl.classList.toggle("sc", y > 30);
 
         // Parallax aura blobs via CSS var (no React state)
         if (aurEl) aurEl.style.setProperty("--sy", String(y));
 
+        // Hide/show bottom dock on scroll direction
+        const chrome = document.getElementById("chrome");
+        if (chrome && Math.abs(d) > 8) {
+          chrome.classList.toggle("min", d > 0 && y > 120);
+        }
+
         scrollLastY.current = y;
-        // Suppress unused warning
-        void d;
       });
     };
 

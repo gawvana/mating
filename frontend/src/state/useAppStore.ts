@@ -17,10 +17,102 @@ function getInitialTab(): ScreenTab {
 }
 export type ThemeMode = "auto" | "light" | "dark";
 export type SheetMode = "quick" | "ai";
+export type AnimationStyle = "Minimal" | "Reduced" | "Normal" | "Expressive";
+export type GlassMode = "Full" | "Adaptive" | "Reduced" | "Minimal";
+export type HapticMode = "Off" | "Light" | "Normal";
 
 interface UndoToastData {
   id: string;
   name: string;
+}
+
+/** One of the 15 configurable animations */
+export interface AnimSetting {
+  enabled: boolean;
+  /** 0..100 intensity multiplier */
+  intensity: number;
+}
+
+/** Motion profile: 15 named animations + global settings */
+export interface MotionProfile {
+  animationStyle: AnimationStyle;
+  glassMode: GlassMode;
+  hapticMode: HapticMode;
+  batterySaver: boolean;
+  // 15 animations
+  fabMorph: AnimSetting;
+  sheetSpring: AnimSetting;
+  purchaseTransition: AnimSetting;
+  animatedTotal: AnimSetting;
+  animatedBudget: AnimSetting;
+  tabIndicator: AnimSetting;
+  checkboxSpring: AnimSetting;
+  swipeResistance: AnimSetting;
+  longPressMenu: AnimSetting;
+  editMorph: AnimSetting;
+  statusPill: AnimSetting;
+  headerMotion: AnimSetting;
+  keyboardSheet: AnimSetting;
+  listAddDelete: AnimSetting;
+  hapticFeedback: AnimSetting;
+}
+
+const DEFAULT_MOTION_PROFILE: MotionProfile = {
+  animationStyle: "Normal",
+  glassMode: "Adaptive",
+  hapticMode: "Normal",
+  batterySaver: false,
+  fabMorph: { enabled: true, intensity: 100 },
+  sheetSpring: { enabled: true, intensity: 100 },
+  purchaseTransition: { enabled: true, intensity: 100 },
+  animatedTotal: { enabled: true, intensity: 100 },
+  animatedBudget: { enabled: true, intensity: 100 },
+  tabIndicator: { enabled: true, intensity: 100 },
+  checkboxSpring: { enabled: true, intensity: 100 },
+  swipeResistance: { enabled: true, intensity: 100 },
+  longPressMenu: { enabled: true, intensity: 100 },
+  editMorph: { enabled: true, intensity: 100 },
+  statusPill: { enabled: true, intensity: 100 },
+  headerMotion: { enabled: true, intensity: 100 },
+  keyboardSheet: { enabled: true, intensity: 100 },
+  listAddDelete: { enabled: true, intensity: 100 },
+  hapticFeedback: { enabled: true, intensity: 100 },
+};
+
+const MINIMAL_MOTION_PROFILE: Partial<MotionProfile> = {
+  animationStyle: "Minimal",
+  glassMode: "Minimal",
+  batterySaver: true,
+  fabMorph: { enabled: false, intensity: 0 },
+  sheetSpring: { enabled: false, intensity: 0 },
+  purchaseTransition: { enabled: false, intensity: 0 },
+  listAddDelete: { enabled: false, intensity: 0 },
+  statusPill: { enabled: true, intensity: 50 },  // keep functional
+  tabIndicator: { enabled: true, intensity: 50 },  // keep functional
+};
+
+function loadMotionProfile(): MotionProfile {
+  try {
+    if (typeof localStorage !== "undefined") {
+      const raw = localStorage.getItem("mating_motion_profile");
+      if (raw) {
+        return { ...DEFAULT_MOTION_PROFILE, ...JSON.parse(raw) };
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return { ...DEFAULT_MOTION_PROFILE };
+}
+
+function saveMotionProfile(profile: MotionProfile) {
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("mating_motion_profile", JSON.stringify(profile));
+    }
+  } catch {
+    // ignore
+  }
 }
 
 interface AppState {
@@ -54,6 +146,19 @@ interface AppState {
 
   autoCategory: boolean;
   setAutoCategory: (enabled: boolean) => void;
+
+  // Motion Profile
+  motionProfile: MotionProfile;
+  setMotionProfile: (profile: MotionProfile) => void;
+  updateMotionProfile: (patch: Partial<MotionProfile>) => void;
+  updateAnimSetting: (key: keyof Pick<MotionProfile,
+    "fabMorph" | "sheetSpring" | "purchaseTransition" | "animatedTotal" |
+    "animatedBudget" | "tabIndicator" | "checkboxSpring" | "swipeResistance" |
+    "longPressMenu" | "editMorph" | "statusPill" | "headerMotion" |
+    "keyboardSheet" | "listAddDelete" | "hapticFeedback"
+  >, patch: Partial<AnimSetting>) => void;
+  applyMinimalPreset: () => void;
+  resetMotionProfile: () => void;
 
   isSheetOpen: boolean;
   sheetMode: SheetMode;
@@ -110,7 +215,7 @@ if (typeof document !== "undefined") {
   } else {
     document.documentElement.setAttribute("data-theme", _initTheme);
   }
-  if (_initCompact) document.documentElement.classList.add("compact");
+  if (_initCompact) document.documentElement.classList.add("compact-mode");
   if (_initMotion) document.documentElement.classList.add("reduced-motion");
 }
 
@@ -121,6 +226,8 @@ const _initLanguage: Language = normalizeLanguage(
 const _initCurrency = (typeof localStorage !== "undefined"
   ? (localStorage.getItem("mating_currency") as "UZS" | "RUB" | "USD" | null)
   : null) ?? "UZS";
+
+const _initMotionProfile = loadMotionProfile();
 
 export const useAppStore = create<AppState>((set, get) => ({
   activeTab: getInitialTab(),
@@ -170,9 +277,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       localStorage.setItem("mating_compact", String(enabled));
     }
     if (enabled) {
-      document.documentElement.classList.add("compact");
+      document.documentElement.classList.add("compact-mode");
     } else {
-      document.documentElement.classList.remove("compact");
+      document.documentElement.classList.remove("compact-mode");
     }
     set({ compactMode: enabled });
   },
@@ -220,6 +327,42 @@ export const useAppStore = create<AppState>((set, get) => ({
       localStorage.setItem("mating_auto_cat", String(enabled));
     }
     set({ autoCategory: enabled });
+  },
+
+  // ── MOTION PROFILE ──
+  motionProfile: _initMotionProfile,
+
+  setMotionProfile: (profile) => {
+    saveMotionProfile(profile);
+    set({ motionProfile: profile });
+  },
+
+  updateMotionProfile: (patch) => {
+    const next = { ...get().motionProfile, ...patch };
+    saveMotionProfile(next);
+    set({ motionProfile: next });
+  },
+
+  updateAnimSetting: (key, patch) => {
+    const current = get().motionProfile;
+    const next: MotionProfile = {
+      ...current,
+      [key]: { ...(current[key] as AnimSetting), ...patch },
+    };
+    saveMotionProfile(next);
+    set({ motionProfile: next });
+  },
+
+  applyMinimalPreset: () => {
+    const next: MotionProfile = { ...DEFAULT_MOTION_PROFILE, ...MINIMAL_MOTION_PROFILE } as MotionProfile;
+    saveMotionProfile(next);
+    set({ motionProfile: next });
+  },
+
+  resetMotionProfile: () => {
+    const next = { ...DEFAULT_MOTION_PROFILE };
+    saveMotionProfile(next);
+    set({ motionProfile: next });
   },
 
   isSheetOpen: false,

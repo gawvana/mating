@@ -2,6 +2,7 @@ import React from "react";
 import { translations } from "../i18n";
 import { useAppStore } from "../state/useAppStore";
 import { isTelegramWebApp, triggerHaptic } from "../telegram/telegram";
+import { StatusPill } from "./StatusPill";
 
 export const NavBar: React.FC = () => {
   const { theme, setTheme, language, isOffline, isSyncing } = useAppStore();
@@ -21,8 +22,7 @@ export const NavBar: React.FC = () => {
     <header className="nav glass">
       <div className="nav-brand">
         <b>{t.appTitle}</b>
-        {isOffline && <span className="badge-offline">{t.offline}</span>}
-        {!isOffline && isSyncing && <span className="badge-syncing">{t.syncing}</span>}
+        <StatusPill isSyncing={isSyncing} isOffline={isOffline} />
         {!inTelegram && (
           <a
             href="https://t.me/MatingD_bot"
