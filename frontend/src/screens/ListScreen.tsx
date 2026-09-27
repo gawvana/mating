@@ -7,6 +7,7 @@ import { SmartSortMode, useAppStore } from "../state/useAppStore";
 import { triggerHaptic } from "../telegram/telegram";
 import { ShoppingItem } from "../types";
 import { SwipeableItem } from "../components/SwipeableItem";
+import { LiquidGlassButton } from "../components/LiquidGlassButton";
 import { detectCategory } from "../utils/localParser";
 
 const ALL_CATEGORY = "Все";
@@ -1040,14 +1041,15 @@ export const ListScreen: React.FC = () => {
         <div style={{ textAlign: "center", padding: "30px 16px", background: "var(--n)", borderRadius: "var(--r3)", marginTop: 12 }}>
           <div style={{ fontWeight: 700, fontSize: 16 }}>{t.errorLoadingTitle}</div>
           <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>{t.errorLoading}</div>
-          <button
+          <LiquidGlassButton
             type="button"
-            className="btn outline"
-            style={{ width: "auto", margin: "14px auto 0", padding: "0 24px", height: 40 }}
+            variant="neutral"
+            size="md"
+            style={{ width: "auto", margin: "14px auto 0", padding: "0 24px" }}
             onClick={() => refetch()}
           >
             {t.retry}
-          </button>
+          </LiquidGlassButton>
         </div>
       )}
 
@@ -1063,17 +1065,18 @@ export const ListScreen: React.FC = () => {
           </div>
           <h3>{t.emptyTitle}</h3>
           <p>{t.emptySubtitle}</p>
-          <button
+          <LiquidGlassButton
             type="button"
-            className="btn press primary"
-            style={{ width: "auto", padding: "0 28px", height: 44 }}
+            variant="prominent"
+            size="md"
+            style={{ width: "auto", padding: "0 28px" }}
             onClick={() => {
               if (hapticsEnabled) triggerHaptic("medium");
               openQuickAdd();
             }}
           >
             {t.emptyAddBtn}
-          </button>
+          </LiquidGlassButton>
 
           <div className="empty-suggestions">
             <div className="empty-suggestions-label">
@@ -1379,13 +1382,15 @@ export const ListScreen: React.FC = () => {
               </button>
             </div>
             <div className="share-modal-actions">
-              <button
+              <LiquidGlassButton
                 type="button"
-                className="btn primary press"
+                variant="prominent"
+                size="md"
+                style={{ width: "100%" }}
                 onClick={() => setShareSnapshot(null)}
               >
                 {language === "uz" ? "Tushunarli" : "Готово"}
-              </button>
+              </LiquidGlassButton>
             </div>
           </div>
         </>

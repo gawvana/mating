@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef } from "react";
 import { triggerHaptic } from "../telegram/telegram";
 
 export interface SegmentOption<T extends string = string> {
@@ -21,11 +21,12 @@ export interface LiquidGlassSegmentProps<T extends string = string> {
 /**
  * Liquid Glass 2.0 Segmented Control
  *
- * Implements a single moving glass lens sliding smoothly across options:
- * - Single track + single moving glass lens (zero redundant backdrop filters)
- * - Subtle liquid stretch / compression on transition
- * - Synchronous text contrast transition
- * - Keyboard arrow navigation & Space/Enter selection
+ * Implements Apple-grade GPU-composited moving glass lens:
+ * - Single track + single moving liquid glass lens (zero redundant backdrop filters)
+ * - Pure hardware-accelerated GPU translation via translate3d (No layout thrashing / no left animation)
+ * - Interruptible continuous spring retargeting on rapid switching (zero timer glitches)
+ * - High-contrast text transition with specular refraction
+ * - Full WAI-ARIA radiogroup semantics & keyboard Arrow navigation
  */
 export function LiquidGlassSegment<T extends string = string>({
   options,
@@ -37,7 +38,6 @@ export function LiquidGlassSegment<T extends string = string>({
   ariaLabel,
 }: LiquidGlassSegmentProps<T>) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [isTransitioning, setIsTransitioning] = useState(false);
 
   const activeIndex = Math.max(0, options.findIndex((opt) => opt.value === value));
   const count = options.length;
@@ -45,8 +45,6 @@ export function LiquidGlassSegment<T extends string = string>({
   const handleSelect = (val: T) => {
     if (val === value) return;
     triggerHaptic("selection");
-    setIsTransitioning(true);
-    setTimeout(() => setIsTransitioning(false), 240);
     onChange(val);
   };
 
@@ -59,12 +57,14 @@ export function LiquidGlassSegment<T extends string = string>({
       e.preventDefault();
       const prevIdx = (activeIndex - 1 + count) % count;
       handleSelect(options[prevIdx].value);
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      handleSelect(options[0].value);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      handleSelect(options[count - 1].value);
     }
   };
-
-  // Lens geometry calculation (percentage based)
-  const lensWidthPercent = 100 / count;
-  const lensLeftPercent = activeIndex * lensWidthPercent;
 
   return (
     <div
@@ -74,17 +74,19 @@ export function LiquidGlassSegment<T extends string = string>({
       tabIndex={0}
       onKeyDown={handleKeyDown}
       className={`glass-seg-track glass-seg-track--${size} ${className}`}
-      style={style}
+      style={{
+        ...style,
+        "--seg-count": count,
+        "--seg-idx": activeIndex,
+      } as React.CSSProperties}
     >
-      {/* Moving Liquid Glass Lens */}
+      {/* Moving Liquid Glass Lens — 100% GPU compositor-driven via CSS translate3d */}
       <span
-        className={`glass-seg-lens ${isTransitioning ? "is-stretching" : ""}`}
-        style={{
-          width: `calc(${lensWidthPercent}% - 4px)`,
-          left: `calc(${lensLeftPercent}% + 2px)`,
-        }}
+        className="glass-seg-lens"
         aria-hidden="true"
-      />
+      >
+        <span className="glass-seg-lens-sheen" />
+      </span>
 
       {/* Segment Option Buttons */}
       {options.map((opt) => {

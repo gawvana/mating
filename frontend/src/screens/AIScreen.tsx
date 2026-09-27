@@ -6,6 +6,7 @@ import { SmartSortMode, useAppStore } from "../state/useAppStore";
 import { triggerHaptic } from "../telegram/telegram";
 import { ShoppingItem } from "../types";
 import { detectCategory, parseShoppingTextDeterministically } from "../utils/localParser";
+import { LiquidGlassButton } from "../components/LiquidGlassButton";
 
 interface RecipeTemplate {
   id: string;
@@ -800,9 +801,10 @@ export const AIScreen: React.FC = () => {
               ? "Ushbu xususiyatni ishlatish uchun Sozlamalar bo'limidan 'AI Yordamchi'ni yoqing."
               : "Для голосового и естественного текстового управления включите умный помощник в настройках."}
           </p>
-          <button
+          <LiquidGlassButton
             type="button"
-            className="btn press"
+            variant="prominent"
+            size="md"
             style={{ width: "auto", margin: "0 auto", padding: "0 28px" }}
             onClick={() => {
               if (hapticsEnabled) triggerHaptic("selection");
@@ -810,7 +812,7 @@ export const AIScreen: React.FC = () => {
             }}
           >
             {language === "uz" ? "Sozlamalarga o'tish" : "Открыть настройки"}
-          </button>
+          </LiquidGlassButton>
         </div>
       </div>
     );
@@ -1081,25 +1083,11 @@ export const AIScreen: React.FC = () => {
               boxSizing: "border-box",
             }}
           >
-            <button
-              className="ai-apply-btn"
+            <LiquidGlassButton
+              variant={detectedIntent === "delete" ? "destructive" : "prominent"}
+              size="lg"
               disabled={selectedCount === 0}
-              style={{
-                width: "100%",
-                height: 46,
-                borderRadius: "var(--r2)",
-                background: "var(--primary)",
-                color: "#ffffff",
-                fontSize: 15,
-                fontWeight: 700,
-                border: "none",
-                cursor: selectedCount === 0 ? "not-allowed" : "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                opacity: selectedCount === 0 ? 0.4 : 1,
-                boxShadow: "0 4px 16px color-mix(in srgb, var(--primary) 35%, transparent)",
-              }}
+              style={{ width: "100%" }}
               onClick={handleApply}
             >
               {detectedIntent === "delete"
@@ -1111,7 +1099,7 @@ export const AIScreen: React.FC = () => {
                 : detectedIntent === "restore"
                 ? `Восстановить (${selectedCount})`
                 : `Применить (${selectedCount})`}
-            </button>
+            </LiquidGlassButton>
           </div>
         </div>
       )}
@@ -1120,9 +1108,14 @@ export const AIScreen: React.FC = () => {
       {detectedIntent === "clear_purchased" && (
         <div className="ai-screen-card ai-clear-card glass">
           <p>Будет удалено все ранее купленное из текущего списка.</p>
-          <button className="ai-danger-btn" onClick={handleApply}>
+          <LiquidGlassButton
+            variant="destructive"
+            size="md"
+            style={{ width: "100%", marginTop: 10 }}
+            onClick={handleApply}
+          >
             Очистить купленные
-          </button>
+          </LiquidGlassButton>
         </div>
       )}
     </div>

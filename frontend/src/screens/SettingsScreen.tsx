@@ -19,6 +19,7 @@ import {
 import { triggerHaptic } from "../telegram/telegram";
 import { LiquidGlassSwitch } from "../components/LiquidGlassSwitch";
 import { LiquidGlassSegment } from "../components/LiquidGlassSegment";
+import { LiquidGlassButton } from "../components/LiquidGlassButton";
 
 const LANGUAGE_OPTIONS = [
   { value: "ru", label: "RU" },
@@ -513,12 +514,12 @@ export const SettingsScreen: React.FC = () => {
             <div className="micro-preview-title">Apple-like Liquid Glass</div>
             <p className="micro-preview-sub">Динамическое оптическое преломление и глубина</p>
             <div className="micro-preview-actions">
-              <button className="btn primary" style={{ height: 32, fontSize: 12, padding: "0 14px" }}>
-                Primary
-              </button>
-              <button className="btn outline" style={{ height: 32, fontSize: 12, padding: "0 14px" }}>
-                Subtle
-              </button>
+              <LiquidGlassButton variant="prominent" size="sm" style={{ height: 32, fontSize: 12, padding: "0 14px" }}>
+                Prominent
+              </LiquidGlassButton>
+              <LiquidGlassButton variant="neutral" size="sm" style={{ height: 32, fontSize: 12, padding: "0 14px" }}>
+                Neutral
+              </LiquidGlassButton>
             </div>
           </div>
         </div>
@@ -872,17 +873,18 @@ export const SettingsScreen: React.FC = () => {
             })}
 
             <div style={{ display: "flex", gap: 10, padding: "14px 0" }}>
-              <button
+              <LiquidGlassButton
                 type="button"
-                className="btn outline press"
-                style={{ height: 38, fontSize: 13 }}
+                variant="subtle"
+                size="md"
+                style={{ width: "100%" }}
                 onClick={() => {
                   resetMotionProfile();
                   if (hapticsEnabled) triggerHaptic("medium");
                 }}
               >
                 Сбросить всё на дефолт
-              </button>
+              </LiquidGlassButton>
             </div>
           </div>
         </div>
@@ -1038,9 +1040,10 @@ export const SettingsScreen: React.FC = () => {
             <div className="settings-row-label">Очистить купленные</div>
             <div className="settings-row-desc">Удалить все купленные товары из базы</div>
           </div>
-          <button
+          <LiquidGlassButton
             type="button"
-            className="btn outline press"
+            variant="destructive"
+            size="sm"
             style={{ width: "auto", height: 34, padding: "0 14px", fontSize: 13 }}
             onClick={() => {
               if (window.confirm("Удалить все купленные товары?")) {
@@ -1049,7 +1052,7 @@ export const SettingsScreen: React.FC = () => {
             }}
           >
             Очистить
-          </button>
+          </LiquidGlassButton>
         </div>
 
         <div className="settings-row">
@@ -1057,9 +1060,10 @@ export const SettingsScreen: React.FC = () => {
             <div className="settings-row-label">Кэш настроек UI</div>
             <div className="settings-row-desc">Сбросить сохраненные параметры профиля движения</div>
           </div>
-          <button
+          <LiquidGlassButton
             type="button"
-            className="btn outline press"
+            variant="subtle"
+            size="sm"
             style={{ width: "auto", height: 34, padding: "0 14px", fontSize: 13 }}
             onClick={() => {
               localStorage.removeItem("mating_motion_profile");
@@ -1069,7 +1073,7 @@ export const SettingsScreen: React.FC = () => {
             }}
           >
             Сброс
-          </button>
+          </LiquidGlassButton>
         </div>
       </div>
 

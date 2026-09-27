@@ -8,6 +8,7 @@ import { triggerHaptic } from "../telegram/telegram";
 import { AIParsedItem, ShoppingItem } from "../types";
 import { calculateTotals, detectCategory, parseShoppingTextDeterministically } from "../utils/localParser";
 import { LiquidGlassSegment } from "./LiquidGlassSegment";
+import { LiquidGlassButton, LiquidGlassChip } from "./LiquidGlassButton";
 
 const UNITS = ["шт", "кг", "г", "л", "мл", "упак"];
 
@@ -859,132 +860,110 @@ export const AddSheet: React.FC = () => {
             <div>
               <button
                 type="button"
-                onClick={() => setShowDetails(!showDetails)}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "var(--primary)",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                  padding: "4px 2px",
+                onClick={() => {
+                  if (hapticsEnabled) triggerHaptic("light");
+                  setShowDetails(!showDetails);
                 }}
+                className="details-toggle-btn"
+                aria-expanded={showDetails}
               >
                 <span>{showDetails ? "Скрыть подробности" : "Подробнее (цена, категория)"}</span>
-                <span style={{ fontSize: 10 }}>{showDetails ? "▲" : "▼"}</span>
+                <svg
+                  viewBox="0 0 24 24"
+                  className={`details-chevron ${showDetails ? "is-open" : ""}`}
+                  aria-hidden="true"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
               </button>
 
-              {showDetails && (
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 12,
-                    marginTop: 10,
-                    padding: "12px 14px",
-                    background: "color-mix(in srgb, var(--track) 60%, transparent)",
-                    borderRadius: "var(--r2)",
-                    border: "1px solid var(--outline)",
-                  }}
-                >
-                  {/* Category Horizontal Scrolling Selector */}
-                  <div>
-                    <label className="field-label" style={{ marginBottom: 6, display: "block" }}>
-                      Категория {category ? `· ${category}` : ""}
-                    </label>
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 6,
-                        overflowX: "auto",
-                        paddingBottom: 4,
-                        scrollbarWidth: "none",
-                      }}
-                    >
-                      {CATEGORIES.map((c) => {
-                        const isSel = category === c;
-                        return (
-                          <button
-                            key={c}
-                            type="button"
-                            onClick={() => {
-                              if (hapticsEnabled) triggerHaptic("selection");
-                              setCategory(c);
-                            }}
-                            style={{
-                              padding: "6px 12px",
-                              borderRadius: "999px",
-                              border: isSel ? "1px solid var(--primary)" : "1px solid var(--outline)",
-                              background: isSel ? "var(--primary)" : "var(--track)",
-                              color: isSel ? "#ffffff" : "var(--muted)",
-                              fontSize: 12,
-                              fontWeight: isSel ? 700 : 500,
-                              cursor: "pointer",
-                              whiteSpace: "nowrap",
-                              flexShrink: 0,
-                              transition: "all 0.15s ease",
-                            }}
-                          >
-                            {c}
-                          </button>
-                        );
-                      })}
+              <div className={`details-accordion ${showDetails ? "is-expanded" : ""}`}>
+                <div className="details-accordion__inner">
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 12,
+                      marginTop: 6,
+                      marginBottom: 6,
+                      padding: "12px 14px",
+                      background: "color-mix(in srgb, var(--track) 60%, transparent)",
+                      borderRadius: "var(--r2)",
+                      border: "1px solid var(--outline)",
+                    }}
+                  >
+                    {/* Category Horizontal Scrolling Selector */}
+                    <div>
+                      <label className="field-label" style={{ marginBottom: 6, display: "block" }}>
+                        Категория {category ? `· ${category}` : ""}
+                      </label>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 6,
+                          overflowX: "auto",
+                          paddingBottom: 4,
+                          scrollbarWidth: "none",
+                        }}
+                      >
+                        {CATEGORIES.map((c) => {
+                          const isSel = category === c;
+                          return (
+                            <LiquidGlassChip
+                              key={c}
+                              selected={isSel}
+                              onClick={() => setCategory(c)}
+                            >
+                              {c}
+                            </LiquidGlassChip>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Price Input */}
-                  <div>
-                    <label className="field-label" style={{ marginBottom: 6, display: "block" }}>
-                      {t.price} ({currency})
-                    </label>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      className="text-input"
-                      placeholder="0"
-                      value={price}
-                      onChange={(e) => setPrice(e.target.value)}
-                      style={{ height: 42, fontSize: 14 }}
-                    />
-                  </div>
-
-                  {/* Line Total Preview */}
-                  {quickLineTotal !== null && quickLineTotal > 0 && (
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, paddingTop: 4 }}>
-                      <span style={{ color: "var(--muted)" }}>{t.estimatedTotal}:</span>
-                      <b style={{ color: "var(--primary)", fontSize: 14 }}>
-                        {formatCurrency(quickLineTotal, currency, language)}
-                      </b>
+                    {/* Price Input */}
+                    <div>
+                      <label className="field-label" style={{ marginBottom: 6, display: "block" }}>
+                        {t.price} ({currency})
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        className="text-input"
+                        placeholder="0"
+                        value={price}
+                        onChange={(e) => setPrice(e.target.value)}
+                        style={{ height: 42, fontSize: 14 }}
+                      />
                     </div>
-                  )}
+
+                    {/* Line Total Preview */}
+                    {quickLineTotal !== null && quickLineTotal > 0 && (
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, paddingTop: 4 }}>
+                        <span style={{ color: "var(--muted)" }}>{t.estimatedTotal}:</span>
+                        <b style={{ color: "var(--primary)", fontSize: 14 }}>
+                          {formatCurrency(quickLineTotal, currency, language)}
+                        </b>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
+              </div>
             </div>
 
-            {/* Sticky Primary CTA */}
-            <button
+            {/* Sticky Primary CTA — True Liquid Glass */}
+            <LiquidGlassButton
               type="submit"
-              className="btn press"
+              variant="prominent"
+              size="lg"
               disabled={!name.trim()}
               style={{
+                width: "100%",
                 marginTop: 6,
-                height: 48,
-                borderRadius: "var(--r2)",
-                background: "var(--primary)",
-                color: "#ffffff",
-                fontSize: 15,
-                fontWeight: 700,
-                border: "none",
-                boxShadow: "0 4px 16px color-mix(in srgb, var(--primary) 35%, transparent)",
-                cursor: !name.trim() ? "not-allowed" : "pointer",
-                opacity: !name.trim() ? 0.45 : 1,
               }}
             >
               {editingItem ? "Сохранить изменения" : t.addTitle}
-            </button>
+            </LiquidGlassButton>
           </form>
         )}
 
@@ -1003,15 +982,17 @@ export const AddSheet: React.FC = () => {
               />
             </div>
 
-            <button
+            <LiquidGlassButton
               type="button"
-              className="btn tn press"
+              variant="neutral"
+              size="md"
               onClick={handleParseAI}
               disabled={!aiText.trim() || isAiLoading}
-              style={{ height: 42, borderRadius: "var(--r2)", fontSize: 14, fontWeight: 700 }}
+              loading={isAiLoading}
+              style={{ width: "100%" }}
             >
-              {isAiLoading ? "Распознавание..." : "Разобрать список"}
-            </button>
+              Разобрать список
+            </LiquidGlassButton>
 
             {aiError && (
               <div style={{ color: "var(--err)", fontSize: 13, textAlign: "center", padding: "6px 10px", background: "color-mix(in srgb, var(--err) 12%, transparent)", borderRadius: "var(--r1)" }}>
@@ -1121,30 +1102,20 @@ export const AddSheet: React.FC = () => {
                 </div>
 
                 {/* Batch Add Actions */}
-                <button
+                <LiquidGlassButton
                   type="button"
-                  className="btn press"
+                  variant="prominent"
+                  size="lg"
                   disabled={selectedItems.length === 0}
                   onClick={() => {
                     if (hapticsEnabled) triggerHaptic("medium");
                     closeSheet();
                     batchCreateMutation.mutate(selectedItems);
                   }}
-                  style={{
-                    height: 48,
-                    borderRadius: "var(--r2)",
-                    background: "var(--primary)",
-                    color: "#ffffff",
-                    fontSize: 15,
-                    fontWeight: 700,
-                    border: "none",
-                    boxShadow: "0 4px 16px color-mix(in srgb, var(--primary) 35%, transparent)",
-                    cursor: selectedItems.length === 0 ? "not-allowed" : "pointer",
-                    opacity: selectedItems.length === 0 ? 0.45 : 1,
-                  }}
+                  style={{ width: "100%" }}
                 >
                   {`Добавить выбранное (${selectedItems.length})`}
-                </button>
+                </LiquidGlassButton>
               </div>
             )}
           </div>
