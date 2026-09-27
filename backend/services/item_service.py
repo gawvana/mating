@@ -55,25 +55,14 @@ class ItemService:
         user_id: str,
         items_data: list[CreateItemRequest],
     ) -> list[ShoppingItemResponse]:
-        results = []
+        if not items_data:
+            return []
         user = await self.user_repo.get_by_id(user_id)
         default_currency = user.currency_code if user else "UZS"
 
-        for data in items_data:
-            currency = data.currency_code or default_currency
-            item, _ = await self.item_repo.create_item(
-                user_id=user_id,
-                name=data.name,
-                quantity=data.quantity,
-                unit=data.unit,
-                category=data.category,
-                price=data.price,
-                currency_code=currency,
-                raw_input_text=data.raw_input_text,
-                client_mutation_id=data.client_mutation_id,
-            )
-            results.append(ShoppingItemResponse.model_validate(item))
-        return results
+        dict_items = [d.model_dump() for d in items_data]
+        created = await self.item_repo.create_items_batch(user_id, dict_items, default_currency)
+        return [ShoppingItemResponse.model_validate(item) for item in created]
 
     async def update_item(
         self,

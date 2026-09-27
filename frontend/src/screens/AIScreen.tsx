@@ -4,6 +4,7 @@ import { api, generateUUID } from "../api/client";
 import { formatCurrency } from "../i18n";
 import { SmartSortMode, useAppStore } from "../state/useAppStore";
 import { triggerHaptic } from "../telegram/telegram";
+import { ShoppingItem } from "../types";
 import { detectCategory, parseShoppingTextDeterministically } from "../utils/localParser";
 
 interface RecipeTemplate {
@@ -614,20 +615,61 @@ export const AIScreen: React.FC = () => {
     const selected = itemsToAdd.filter((i) => i.selected);
     if (selected.length === 0) return;
 
-    const payloads = selected.map((i) => ({
-      name: i.name,
-      quantity: i.quantity,
-      unit: i.unit,
-      category: i.category,
-      price: i.price,
-      currency_code: currency,
-    }));
+    if (hapticsEnabled) triggerHaptic("medium");
 
-    await api.batchCreateItems(payloads);
-    queryClient.invalidateQueries({ queryKey: ["items"] });
-    queryClient.invalidateQueries({ queryKey: ["stats"] });
+    // 1. Optimistic insert into items cache
+    await queryClient.cancelQueries({ queryKey: ["items"] });
+    const tempIds: string[] = [];
+    const optimisticItems: ShoppingItem[] = selected.map((i, idx) => {
+      const tId = `temp-ai-${Date.now()}-${idx}`;
+      tempIds.push(tId);
+      return {
+        id: tId,
+        user_id: "local_temp",
+        name: i.name,
+        quantity: i.quantity,
+        unit: i.unit,
+        category: i.category,
+        price: i.price,
+        currency_code: currency,
+        is_purchased: false,
+        version: 1,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+    });
+
+    queryClient.setQueryData<ShoppingItem[]>(["items"], (old = []) => [
+      ...optimisticItems,
+      ...old,
+    ]);
+
+    // 2. Immediate screen transition & toast
     showUndoToast(selected[0].id, formatPersonalityMessage("applied", selected.length));
     setActiveTab("list");
+
+    // 3. Background server sync & ID reconciliation
+    try {
+      const payloads = selected.map((i) => ({
+        name: i.name,
+        quantity: i.quantity,
+        unit: i.unit,
+        category: i.category,
+        price: i.price,
+        currency_code: currency,
+      }));
+      const serverItems = await api.batchCreateItems(payloads);
+      if (serverItems && serverItems.length > 0) {
+        queryClient.setQueryData<ShoppingItem[]>(["items"], (old = []) => {
+          const tempSet = new Set(tempIds);
+          const remaining = old.filter((it) => !tempSet.has(it.id));
+          return [...serverItems, ...remaining];
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+    } catch {
+      // Offline fallback
+    }
   };
 
   const handleApply = async () => {

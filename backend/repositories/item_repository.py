@@ -132,6 +132,79 @@ class ItemRepository:
                     return existing, False
             raise
 
+    async def create_items_batch(
+        self,
+        user_id: str,
+        items: list[dict[str, Any]],
+        default_currency: str = "UZS",
+    ) -> list[ShoppingItem]:
+        """Batch create items in a single transaction with idempotency checks."""
+        if not items:
+            return []
+
+        mutation_ids = [d.get("client_mutation_id") for d in items if d.get("client_mutation_id")]
+        existing_map: dict[str, ShoppingItem] = {}
+        if mutation_ids:
+            stmt = select(ShoppingItem).where(
+                ShoppingItem.user_id == user_id,
+                ShoppingItem.client_mutation_id.in_(mutation_ids),
+            )
+            res = await self.session.execute(stmt)
+            for ex in res.scalars().all():
+                existing_map[ex.client_mutation_id] = ex
+
+        items_to_add: list[ShoppingItem] = []
+        result_items: list[ShoppingItem] = []
+
+        for d in items:
+            mut_id = d.get("client_mutation_id")
+            if mut_id and mut_id in existing_map:
+                result_items.append(existing_map[mut_id])
+                continue
+
+            item = ShoppingItem(
+                user_id=user_id,
+                name=d["name"].strip(),
+                quantity=d.get("quantity", 1.0),
+                unit=d.get("unit", "шт").strip(),
+                category=d.get("category", "Другое").strip(),
+                price=d.get("price"),
+                currency_code=d.get("currency_code") or default_currency,
+                is_purchased=False,
+                raw_input_text=d.get("raw_input_text"),
+                client_mutation_id=mut_id,
+                version=1,
+                deleted_at=None,
+            )
+            self.session.add(item)
+            items_to_add.append(item)
+            result_items.append(item)
+
+        if items_to_add:
+            try:
+                await self.session.commit()
+                for it in items_to_add:
+                    await self.session.refresh(it)
+            except IntegrityError:
+                await self.session.rollback()
+                fallback_results = []
+                for d in items:
+                    fallback_item, _ = await self.create_item(
+                        user_id=user_id,
+                        name=d["name"],
+                        quantity=d.get("quantity", 1.0),
+                        unit=d.get("unit", "шт"),
+                        category=d.get("category", "Другое"),
+                        price=d.get("price"),
+                        currency_code=d.get("currency_code") or default_currency,
+                        raw_input_text=d.get("raw_input_text"),
+                        client_mutation_id=d.get("client_mutation_id"),
+                    )
+                    fallback_results.append(fallback_item)
+                return fallback_results
+
+        return result_items
+
     async def update_item(
         self,
         user_id: str,

@@ -271,118 +271,155 @@ export const AddSheet: React.FC = () => {
     setTimeout(() => setIsBumping(false), 220);
   };
 
-  // Quick save mutation (handles create and edit with offline fallback)
-  const saveItemMutation = useMutation({
-    mutationFn: async () => {
-      const cleanName = name.trim();
-      if (!cleanName) return;
-      const numQty = parseFloat(quantity) || 1;
-      const numPrice = price.trim() ? parseFloat(price.replace(",", ".")) : null;
+  interface SaveItemPayload {
+    cleanName: string;
+    numQty: number;
+    unit: string;
+    category: string;
+    numPrice: number | null;
+    isEditing: boolean;
+    editId?: string;
+    editVersion?: number;
+  }
 
-      if (editingItem) {
-        return api.updateItem(editingItem.id, editingItem.version, {
-          name: cleanName,
-          quantity: numQty,
-          unit,
-          category,
-          price: numPrice && numPrice > 0 ? numPrice : null,
+  // Quick save mutation (handles create and edit with instant optimistic cache insertion and offline fallback)
+  const saveItemMutation = useMutation({
+    mutationFn: async (payload: SaveItemPayload) => {
+      if (payload.isEditing && payload.editId) {
+        return api.updateItem(payload.editId, payload.editVersion ?? 1, {
+          name: payload.cleanName,
+          quantity: payload.numQty,
+          unit: payload.unit,
+          category: payload.category,
+          price: payload.numPrice,
+          currency_code: currency,
         });
       }
 
       return api.createItem({
-        name: cleanName,
-        quantity: numQty,
-        unit,
-        category,
-        price: numPrice && numPrice > 0 ? numPrice : null,
+        name: payload.cleanName,
+        quantity: payload.numQty,
+        unit: payload.unit,
+        category: payload.category,
+        price: payload.numPrice,
+        currency_code: currency,
       });
     },
-    onSuccess: () => {
-      if (hapticsEnabled) triggerHaptic("success");
-      queryClient.invalidateQueries({ queryKey: ["items"] });
-      queryClient.invalidateQueries({ queryKey: ["stats"] });
-      closeSheet();
+    onMutate: async (payload: SaveItemPayload) => {
+      // 1. Cancel ongoing queries to avoid overwriting optimistic data
+      await queryClient.cancelQueries({ queryKey: ["items"] });
+      const previousItems = queryClient.getQueryData<ShoppingItem[]>(["items"]) || [];
+
+      let tempId: string | null = null;
+      if (payload.isEditing && payload.editId) {
+        queryClient.setQueryData<ShoppingItem[]>(["items"], (old = []) =>
+          old.map((it) =>
+            it.id === payload.editId
+              ? {
+                  ...it,
+                  name: payload.cleanName,
+                  quantity: payload.numQty,
+                  unit: payload.unit,
+                  category: payload.category,
+                  price: payload.numPrice,
+                  version: it.version + 1,
+                  updated_at: new Date().toISOString(),
+                }
+              : it
+          )
+        );
+      } else {
+        tempId = `temp-${generateUUID()}`;
+        const optimisticItem: ShoppingItem = {
+          id: tempId,
+          user_id: "local_temp",
+          name: payload.cleanName,
+          quantity: payload.numQty,
+          unit: payload.unit,
+          category: payload.category,
+          price: payload.numPrice,
+          currency_code: currency,
+          is_purchased: false,
+          version: 1,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        queryClient.setQueryData<ShoppingItem[]>(["items"], (old = []) => [
+          optimisticItem,
+          ...old,
+        ]);
+      }
+
+      return { previousItems, tempId, isEditing: payload.isEditing, editId: payload.editId };
     },
-    onError: (err: any) => {
+    onSuccess: (serverItem, payload, context) => {
+      if (hapticsEnabled) triggerHaptic("success");
+
+      if (serverItem) {
+        // Reconcile optimistic temp item with real server item (real ID, version, created_at)
+        queryClient.setQueryData<ShoppingItem[]>(["items"], (old = []) =>
+          old.map((it) => {
+            if (context?.tempId && it.id === context.tempId) {
+              return serverItem;
+            }
+            if (payload.isEditing && it.id === payload.editId) {
+              return serverItem;
+            }
+            return it;
+          })
+        );
+      }
+
+      // Background stats update without refetching items list
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+    },
+    onError: (err: any, payload, context) => {
       const isOfflineMode = typeof navigator !== "undefined" && !navigator.onLine;
-      const cleanName = name.trim();
-      const numQty = parseFloat(quantity) || 1;
-      const numPrice = price.trim() ? parseFloat(price.replace(",", ".")) : null;
 
       if (isOfflineMode) {
-        if (editingItem) {
-          // Robust Offline Edit / Update Support
+        if (payload.isEditing && payload.editId) {
           enqueueMutation({
             type: "update",
             payload: {
-              id: editingItem.id,
-              version: editingItem.version,
+              id: payload.editId,
+              version: payload.editVersion ?? 1,
               data: {
-                name: cleanName,
-                quantity: numQty,
-                unit,
-                category,
-                price: numPrice && numPrice > 0 ? numPrice : null,
+                name: payload.cleanName,
+                quantity: payload.numQty,
+                unit: payload.unit,
+                category: payload.category,
+                price: payload.numPrice,
               },
             },
           });
-          queryClient.setQueryData<ShoppingItem[]>(["items"], (old = []) =>
-            old.map((it) =>
-              it.id === editingItem.id
-                ? {
-                    ...it,
-                    name: cleanName,
-                    quantity: numQty,
-                    unit,
-                    category,
-                    price: numPrice && numPrice > 0 ? numPrice : null,
-                    version: it.version + 1,
-                    updated_at: new Date().toISOString(),
-                  }
-                : it
-            )
-          );
         } else {
-          // Robust Offline Create Support
           enqueueMutation({
             type: "create",
             payload: {
-              name: cleanName,
-              quantity: numQty,
-              unit,
-              category,
-              price: numPrice && numPrice > 0 ? numPrice : null,
+              name: payload.cleanName,
+              quantity: payload.numQty,
+              unit: payload.unit,
+              category: payload.category,
+              price: payload.numPrice,
+              currency_code: currency,
             },
           });
-          queryClient.setQueryData<ShoppingItem[]>(["items"], (old = []) => [
-            {
-              id: generateUUID(),
-              user_id: "local_temp",
-              name: cleanName,
-              quantity: numQty,
-              unit,
-              category,
-              price: numPrice && numPrice > 0 ? numPrice : null,
-              currency_code: "UZS",
-              is_purchased: false,
-              version: 1,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            },
-            ...old,
-          ]);
         }
         if (hapticsEnabled) triggerHaptic("success");
-        closeSheet();
         return;
       }
 
+      // Rollback on genuine error
+      if (context?.previousItems) {
+        queryClient.setQueryData(["items"], context.previousItems);
+      }
       if (hapticsEnabled) triggerHaptic("error");
       setFormError(err.message || "Не удалось сохранить товар");
     },
   });
 
-  // Batch add mutation
+  // Batch add mutation with instant optimistic UI update
   const batchCreateMutation = useMutation({
     mutationFn: async (itemsToAdd: AIParsedItem[]) => {
       return api.batchCreateItems(
@@ -392,16 +429,55 @@ export const AddSheet: React.FC = () => {
           unit: it.unit,
           category: it.category,
           price: it.estimated_price,
+          currency_code: currency,
         }))
       );
     },
-    onSuccess: () => {
-      if (hapticsEnabled) triggerHaptic("success");
-      queryClient.invalidateQueries({ queryKey: ["items"] });
-      queryClient.invalidateQueries({ queryKey: ["stats"] });
-      closeSheet();
+    onMutate: async (itemsToAdd: AIParsedItem[]) => {
+      await queryClient.cancelQueries({ queryKey: ["items"] });
+      const previousItems = queryClient.getQueryData<ShoppingItem[]>(["items"]) || [];
+
+      const tempIds: string[] = [];
+      const optimisticItems: ShoppingItem[] = itemsToAdd.map((it, idx) => {
+        const tempId = `temp-batch-${Date.now()}-${idx}`;
+        tempIds.push(tempId);
+        return {
+          id: tempId,
+          user_id: "local_temp",
+          name: it.name,
+          quantity: it.quantity,
+          unit: it.unit,
+          category: it.category,
+          price: it.estimated_price,
+          currency_code: currency,
+          is_purchased: false,
+          version: 1,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+      });
+
+      queryClient.setQueryData<ShoppingItem[]>(["items"], (old = []) => [
+        ...optimisticItems,
+        ...old,
+      ]);
+
+      return { previousItems, tempIds };
     },
-    onError: (err: any, itemsToAdd) => {
+    onSuccess: (serverItems, _itemsToAdd, context) => {
+      if (hapticsEnabled) triggerHaptic("success");
+
+      if (serverItems && serverItems.length > 0 && context?.tempIds) {
+        queryClient.setQueryData<ShoppingItem[]>(["items"], (old = []) => {
+          const tempSet = new Set(context.tempIds);
+          const remaining = old.filter((it) => !tempSet.has(it.id));
+          return [...serverItems, ...remaining];
+        });
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+    },
+    onError: (err: any, itemsToAdd, context) => {
       if (typeof navigator !== "undefined" && !navigator.onLine) {
         enqueueMutation({
           type: "batch_create",
@@ -411,33 +487,42 @@ export const AddSheet: React.FC = () => {
             unit: it.unit,
             category: it.category,
             price: it.estimated_price,
+            currency_code: currency,
           })),
         });
-        queryClient.setQueryData<ShoppingItem[]>(["items"], (old = []) => [
-          ...itemsToAdd.map((it) => ({
-            id: generateUUID(),
-            user_id: "local_temp",
-            name: it.name,
-            quantity: it.quantity,
-            unit: it.unit,
-            category: it.category,
-            price: it.estimated_price,
-            currency_code: "UZS",
-            is_purchased: false,
-            version: 1,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })),
-          ...old,
-        ]);
         if (hapticsEnabled) triggerHaptic("success");
-        closeSheet();
         return;
+      }
+
+      if (context?.previousItems) {
+        queryClient.setQueryData(["items"], context.previousItems);
       }
       if (hapticsEnabled) triggerHaptic("error");
       setAiError(err.message || "Ошибка при пакетном добавлении товаров");
     },
   });
+
+  const handleSave = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const cleanName = name.trim();
+    if (!cleanName) return;
+    const numQty = parseFloat(quantity) || 1;
+    const numPrice = price.trim() ? parseFloat(price.replace(",", ".")) : null;
+
+    if (hapticsEnabled) triggerHaptic("medium");
+    closeSheet();
+
+    saveItemMutation.mutate({
+      cleanName,
+      numQty,
+      unit,
+      category,
+      numPrice: numPrice && numPrice > 0 ? numPrice : null,
+      isEditing: Boolean(editingItem),
+      editId: editingItem?.id,
+      editVersion: editingItem?.version,
+    });
+  };
 
   // AI text parsing handler
   const handleParseAI = async () => {
@@ -613,11 +698,6 @@ export const AddSheet: React.FC = () => {
   };
 
   const sheetTitle = editingItem ? "Изменить товар" : (sheetMode === "quick" ? t.addTitle : t.aiTab);
-  const submitBtnText = saveItemMutation.isPending
-    ? "Сохранение..."
-    : editingItem
-    ? "Сохранить изменения"
-    : t.addTitle;
 
   return (
     <>
@@ -704,10 +784,7 @@ export const AddSheet: React.FC = () => {
         {/* ── QUICK ADD / EDIT TAB ── */}
         {(sheetMode === "quick" || editingItem) && (
           <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              saveItemMutation.mutate();
-            }}
+            onSubmit={handleSave}
             style={{ display: "flex", flexDirection: "column", gap: 12 }}
           >
             {/* Primary Product Name Input */}
@@ -891,7 +968,7 @@ export const AddSheet: React.FC = () => {
             <button
               type="submit"
               className="btn press"
-              disabled={!name.trim() || saveItemMutation.isPending}
+              disabled={!name.trim()}
               style={{
                 marginTop: 6,
                 height: 48,
@@ -902,11 +979,11 @@ export const AddSheet: React.FC = () => {
                 fontWeight: 700,
                 border: "none",
                 boxShadow: "0 4px 16px color-mix(in srgb, var(--primary) 35%, transparent)",
-                cursor: !name.trim() || saveItemMutation.isPending ? "not-allowed" : "pointer",
+                cursor: !name.trim() ? "not-allowed" : "pointer",
                 opacity: !name.trim() ? 0.45 : 1,
               }}
             >
-              {submitBtnText}
+              {editingItem ? "Сохранить изменения" : t.addTitle}
             </button>
           </form>
         )}
@@ -1047,8 +1124,12 @@ export const AddSheet: React.FC = () => {
                 <button
                   type="button"
                   className="btn press"
-                  disabled={selectedItems.length === 0 || batchCreateMutation.isPending}
-                  onClick={() => batchCreateMutation.mutate(selectedItems)}
+                  disabled={selectedItems.length === 0}
+                  onClick={() => {
+                    if (hapticsEnabled) triggerHaptic("medium");
+                    closeSheet();
+                    batchCreateMutation.mutate(selectedItems);
+                  }}
                   style={{
                     height: 48,
                     borderRadius: "var(--r2)",
@@ -1058,13 +1139,11 @@ export const AddSheet: React.FC = () => {
                     fontWeight: 700,
                     border: "none",
                     boxShadow: "0 4px 16px color-mix(in srgb, var(--primary) 35%, transparent)",
-                    cursor: selectedItems.length === 0 || batchCreateMutation.isPending ? "not-allowed" : "pointer",
+                    cursor: selectedItems.length === 0 ? "not-allowed" : "pointer",
                     opacity: selectedItems.length === 0 ? 0.45 : 1,
                   }}
                 >
-                  {batchCreateMutation.isPending
-                    ? "Добавление..."
-                    : `Добавить выбранное (${selectedItems.length})`}
+                  {`Добавить выбранное (${selectedItems.length})`}
                 </button>
               </div>
             )}

@@ -578,7 +578,6 @@ export const ListScreen: React.FC = () => {
     },
     onSuccess: (_, item) => {
       if (hapticsEnabled) triggerHaptic("medium");
-      queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["stats"] });
       showUndoToast(item.id, item.name);
     },
@@ -613,7 +612,7 @@ export const ListScreen: React.FC = () => {
             next.delete(item.id);
             return next;
           });
-        }, 240);
+        }, 220);
       } else {
         deleteMutation.mutate(item);
       }
@@ -641,16 +640,40 @@ export const ListScreen: React.FC = () => {
   const handleAddSuggestion = useCallback(async (suggestedName: string) => {
     if (hapticsEnabled) triggerHaptic("medium");
     const category = detectCategory(suggestedName);
+    const tempId = `temp-sug-${Date.now()}`;
+    const optimisticItem: ShoppingItem = {
+      id: tempId,
+      user_id: "local_temp",
+      name: suggestedName,
+      quantity: 1,
+      unit: "шт",
+      category,
+      price: null,
+      currency_code: "UZS",
+      is_purchased: false,
+      version: 1,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    await queryClient.cancelQueries({ queryKey: ["items"] });
+    queryClient.setQueryData<ShoppingItem[]>(["items"], (old = []) => [
+      optimisticItem,
+      ...old,
+    ]);
+    triggerSuccess(suggestedName + " +");
+
     try {
-      await api.createItem({
+      const serverItem = await api.createItem({
         name: suggestedName,
         quantity: 1,
         unit: "шт",
         category,
       });
-      queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.setQueryData<ShoppingItem[]>(["items"], (old = []) =>
+        old.map((it) => (it.id === tempId ? serverItem : it))
+      );
       queryClient.invalidateQueries({ queryKey: ["stats"] });
-      triggerSuccess(suggestedName + " +");
     } catch {
       if (typeof navigator !== "undefined" && !navigator.onLine) {
         enqueueMutation({
@@ -662,8 +685,6 @@ export const ListScreen: React.FC = () => {
             category,
           },
         });
-        queryClient.invalidateQueries({ queryKey: ["items"] });
-        triggerSuccess(suggestedName + " (офлайн)");
       }
     }
   }, [hapticsEnabled, queryClient, triggerSuccess]);

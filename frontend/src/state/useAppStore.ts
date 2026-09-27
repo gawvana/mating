@@ -121,7 +121,7 @@ export interface MotionProfile {
 const DEFAULT_ANIM_SETTING: AnimSetting = {
   enabled: true,
   intensity: 100,
-  duration: 450,
+  duration: 250,
   curve: "snappy",
 };
 
@@ -132,22 +132,46 @@ export const DEFAULT_MOTION_PROFILE: MotionProfile = {
   hapticMode: "Normal",
   batterySaver: false,
   intensity: 100,
-  fabMorph: { enabled: true, intensity: 100, duration: 450, curve: "snappy" },
-  sheetSpring: { enabled: true, intensity: 100, duration: 600, curve: "snappy" },
-  purchaseTransition: { enabled: true, intensity: 100, duration: 400, curve: "snappy" },
-  animatedTotal: { enabled: true, intensity: 100, duration: 400, curve: "balanced" },
-  animatedBudget: { enabled: true, intensity: 100, duration: 700, curve: "snappy" },
-  tabIndicator: { enabled: true, intensity: 100, duration: 650, curve: "snappy" },
-  checkboxSpring: { enabled: true, intensity: 100, duration: 350, curve: "snappy" },
-  swipeResistance: { enabled: true, intensity: 100, duration: 450, curve: "snappy" },
-  longPressMenu: { enabled: true, intensity: 100, duration: 250, curve: "snappy" },
-  editMorph: { enabled: true, intensity: 100, duration: 400, curve: "snappy" },
-  statusPill: { enabled: true, intensity: 100, duration: 400, curve: "snappy" },
-  headerMotion: { enabled: true, intensity: 100, duration: 600, curve: "snappy" },
-  keyboardSheet: { enabled: true, intensity: 100, duration: 350, curve: "snappy" },
-  listAddDelete: { enabled: true, intensity: 100, duration: 350, curve: "snappy" },
-  hapticFeedback: { enabled: true, intensity: 100, duration: 200, curve: "snappy" },
+  fabMorph: { enabled: true, intensity: 100, duration: 220, curve: "snappy" },
+  sheetSpring: { enabled: true, intensity: 100, duration: 320, curve: "snappy" },
+  purchaseTransition: { enabled: true, intensity: 100, duration: 240, curve: "snappy" },
+  animatedTotal: { enabled: true, intensity: 100, duration: 250, curve: "balanced" },
+  animatedBudget: { enabled: true, intensity: 100, duration: 320, curve: "snappy" },
+  tabIndicator: { enabled: true, intensity: 100, duration: 240, curve: "snappy" },
+  checkboxSpring: { enabled: true, intensity: 100, duration: 220, curve: "snappy" },
+  swipeResistance: { enabled: true, intensity: 100, duration: 250, curve: "snappy" },
+  longPressMenu: { enabled: true, intensity: 100, duration: 200, curve: "snappy" },
+  editMorph: { enabled: true, intensity: 100, duration: 280, curve: "snappy" },
+  statusPill: { enabled: true, intensity: 100, duration: 250, curve: "snappy" },
+  headerMotion: { enabled: true, intensity: 100, duration: 260, curve: "snappy" },
+  keyboardSheet: { enabled: true, intensity: 100, duration: 250, curve: "snappy" },
+  listAddDelete: { enabled: true, intensity: 100, duration: 220, curve: "snappy" },
+  hapticFeedback: { enabled: true, intensity: 100, duration: 150, curve: "snappy" },
 };
+
+export function syncMotionProfileToCss(profile: MotionProfile) {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  const intensity = (profile.intensity ?? 100) / 100;
+  const isBattery = profile.batterySaver || profile.animationStyle === "Minimal";
+  const factor = isBattery ? 0 : intensity;
+
+  root.style.setProperty("--dur-fab", `${Math.round((profile.fabMorph?.duration ?? 220) * factor)}ms`);
+  root.style.setProperty("--dur-sheet", `${Math.round((profile.sheetSpring?.duration ?? 320) * factor)}ms`);
+  root.style.setProperty("--dur-tab", `${Math.round((profile.tabIndicator?.duration ?? 240) * factor)}ms`);
+  root.style.setProperty("--dur-purchase", `${Math.round((profile.purchaseTransition?.duration ?? 240) * factor)}ms`);
+  root.style.setProperty("--dur-list", `${Math.round((profile.listAddDelete?.duration ?? 220) * factor)}ms`);
+  root.style.setProperty("--dur-keyboard", `${Math.round((profile.keyboardSheet?.duration ?? 250) * factor)}ms`);
+  root.style.setProperty("--dur-edit-morph", `${Math.round((profile.editMorph?.duration ?? 280) * factor)}ms`);
+
+  const curves: Record<SpringCurve, string> = {
+    snappy: "var(--spring-snappy, cubic-bezier(.34, 1.3, .64, 1))",
+    balanced: "var(--spring-balanced, cubic-bezier(.25, 1, .4, 1))",
+    soft: "var(--spring-soft, cubic-bezier(.32, .72, 0, 1))",
+    linear: "linear",
+  };
+  root.style.setProperty("--sheet-curve", curves[profile.sheetSpring?.curve || "snappy"]);
+}
 
 function loadMotionProfile(): MotionProfile {
   try {
@@ -193,6 +217,7 @@ function saveMotionProfile(profile: MotionProfile) {
     if (typeof localStorage !== "undefined") {
       localStorage.setItem("mating_motion_profile", JSON.stringify(profile));
     }
+    syncMotionProfileToCss(profile);
   } catch {
     // ignore
   }
@@ -486,6 +511,7 @@ if (typeof document !== "undefined") {
 
   const initialRadius = _initCornerPreset === "custom" ? _initCornerCustom : CORNER_RADIUS_MAP[_initCornerPreset] || 16;
   applyThemeStyles(_initAccent, initialRadius, _initGlassConfig, _initMasterMotion, _initMotionProfile.glassMode);
+  syncMotionProfileToCss(_initMotionProfile);
 }
 
 const _initLanguage: Language = normalizeLanguage(

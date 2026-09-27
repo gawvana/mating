@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, generateUUID } from "../api/client";
+import { api } from "../api/client";
 import { translations } from "../i18n";
 import { enqueueMutation } from "../state/offlineQueue";
 import { useAppStore } from "../state/useAppStore";
@@ -98,27 +98,43 @@ export const QuickAddBar: React.FC = () => {
         ];
       }
 
-      const optimisticItems: ShoppingItem[] = parsed.map((p) => ({
-        id: generateUUID(),
-        user_id: "local_temp",
-        name: p.name,
-        quantity: p.quantity,
-        unit: p.unit,
-        category: autoCategory ? p.category : "Другое",
-        price: p.estimated_price,
-        currency_code: currency,
-        is_purchased: false,
-        raw_input_text: trimmed,
-        created_at: new Date().toISOString(),
-        version: 1,
-      }));
+      const tempIds: string[] = [];
+      const optimisticItems: ShoppingItem[] = parsed.map((p, idx) => {
+        const tempId = `temp-quick-${Date.now()}-${idx}`;
+        tempIds.push(tempId);
+        return {
+          id: tempId,
+          user_id: "local_temp",
+          name: p.name,
+          quantity: p.quantity,
+          unit: p.unit,
+          category: autoCategory ? p.category : "Другое",
+          price: p.estimated_price,
+          currency_code: currency,
+          is_purchased: false,
+          raw_input_text: trimmed,
+          created_at: new Date().toISOString(),
+          version: 1,
+        };
+      });
 
       queryClient.setQueryData<ShoppingItem[]>(["items"], (old = []) => [
         ...optimisticItems,
         ...old,
       ]);
 
-      return { previousItems };
+      return { previousItems, tempIds };
+    },
+    onSuccess: (serverItems, _rawInput, context) => {
+      if (hapticsEnabled) triggerHaptic("success");
+      if (serverItems && serverItems.length > 0 && context?.tempIds) {
+        queryClient.setQueryData<ShoppingItem[]>(["items"], (old = []) => {
+          const tempSet = new Set(context.tempIds);
+          const remaining = old.filter((it) => !tempSet.has(it.id));
+          return [...serverItems, ...remaining];
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
     },
     onError: (_err, rawInput, context) => {
       if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -168,10 +184,7 @@ export const QuickAddBar: React.FC = () => {
       }
     },
     onSettled: () => {
-      if (typeof navigator !== "undefined" && navigator.onLine) {
-        queryClient.invalidateQueries({ queryKey: ["items"] });
-        queryClient.invalidateQueries({ queryKey: ["stats"] });
-      }
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
     },
   });
 

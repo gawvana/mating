@@ -122,12 +122,14 @@
   --anim-haptic: 2;
   --motion-intensity: 100;
 
-  /* Per-animation duration variables */
-  --dur-fab: 450ms;
-  --dur-sheet: 600ms;
-  --dur-purchase: 400ms;
-  --dur-tab: 650ms;
-  --dur-list: 350ms;
+  /* Per-animation duration variables (Snappy, physical Apple-like motion) */
+  --dur-fab: 220ms;
+  --dur-sheet: 320ms;
+  --dur-purchase: 240ms;
+  --dur-tab: 240ms;
+  --dur-list: 220ms;
+  --dur-keyboard: 250ms;
+  --dur-edit-morph: 280ms;
 }
 
 /* Linear spring physics where supported */
@@ -273,7 +275,7 @@ body {
   color: var(--on);
   font: 400 15px/1.5 var(--font);
   overflow: hidden;
-  transition: background .6s var(--sheet);
+  transition: background var(--dur-sheet, 320ms) var(--sheet);
 }
 
 body.open {
@@ -323,7 +325,7 @@ svg.defs {
   overscroll-behavior-y: contain;
   background: var(--bg);
   transform-origin: 50% 0;
-  transition: transform .55s var(--sheet);
+  transition: transform var(--dur-sheet, 320ms) var(--sheet);
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
 }
@@ -428,13 +430,13 @@ html.refract .glass {
 /* ── SPRING PRESS INTERACTION ── */
 .press {
   touch-action: manipulation;
-  transition: transform .45s var(--spring), opacity .15s;
+  transition: transform .22s var(--spring), opacity .12s;
 }
 
 .press:active {
-  transform: scale(.94);
-  opacity: .88;
-  transition-duration: .1s;
+  transform: scale(.97);
+  opacity: .92;
+  transition-duration: .08s;
 }
 
 /* ── STICKY GLASS HEADER ── */
@@ -791,7 +793,7 @@ html.refract .glass {
 
 /* Purchase transition */
 .item-row.purchasing {
-  animation: purchase-anim var(--dur-purchase, .4s) var(--spring) forwards;
+  animation: purchase-anim var(--dur-purchase, 240ms) var(--spring) forwards;
 }
 
 @keyframes purchase-anim {
@@ -1024,9 +1026,8 @@ html.refract .glass {
   border: 1px solid rgba(255,255,255,.25);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 8px 18px color-mix(in srgb, var(--primary) 28%, transparent);
   transition:
-    transform var(--dur-fab, .55s) var(--spring),
-    opacity .3s,
-    border-radius .7s var(--bounce);
+    transform var(--dur-fab, 220ms) var(--spring),
+    opacity .2s;
   flex-shrink: 0;
   overflow: hidden;
   position: relative;
@@ -1038,13 +1039,9 @@ html.refract .glass {
   transform: scale(0.6) translateY(20px);
 }
 
-.fab:hover {
-  border-radius: 25px;
-}
-
 .fab:active {
-  transform: scale(.92);
-  transition-duration: .15s;
+  transform: scale(.96);
+  transition-duration: .08s;
 }
 
 .fab svg {
@@ -1052,7 +1049,7 @@ html.refract .glass {
   height: 24px;
   stroke-width: 2.2;
   position: absolute;
-  transition: transform .45s var(--spring), opacity .3s;
+  transition: transform .25s var(--spring), opacity .2s;
 }
 
 /* FAB icon morph: plus icon */
@@ -1089,7 +1086,7 @@ html.refract .glass {
   transform-origin: 50% 100%;
   position: relative;
   box-shadow: 0 8px 24px var(--sh);
-  transition: height .6s var(--spring), transform .6s var(--spring);
+  transition: height .25s var(--spring), transform .25s var(--spring);
 }
 
 .chrome.min .dock {
@@ -1115,12 +1112,12 @@ html.refract .glass {
   font-size: 11px;
   font-weight: 600;
   color: var(--muted);
-  transition: color .25s;
+  transition: color .2s;
   padding: 0 4px;
 }
 
 .tab span {
-  transition: opacity .3s, font-size .4s var(--spring), height .4s var(--spring);
+  transition: opacity .2s, font-size .25s var(--spring), height .25s var(--spring);
   height: 14px;
   white-space: nowrap;
   overflow: hidden;
@@ -1141,7 +1138,7 @@ html.refract .glass {
 .tab svg {
   width: 20px;
   height: 20px;
-  transition: transform .35s var(--spring);
+  transition: transform .25s var(--spring);
 }
 
 .tab:active svg {
@@ -1160,7 +1157,7 @@ html.refract .glass {
   border: 1px solid var(--edge);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.4), 0 2px 8px var(--sh);
   transform: translateX(calc(var(--i, var(--tab-idx, 0)) * 100%));
-  transition: transform var(--dur-tab, .65s) var(--spring), background .3s;
+  transition: transform var(--dur-tab, 240ms) var(--spring), background .2s;
   pointer-events: none;
 }
 
@@ -1182,7 +1179,7 @@ html.refract .glass {
   pointer-events: none;
   will-change: opacity;
   transform: translateZ(0);
-  transition: opacity .5s var(--sheet);
+  transition: opacity var(--dur-sheet, 320ms) var(--sheet);
 }
 
 .scrim.open {
@@ -1203,7 +1200,7 @@ html.refract .glass {
   background: var(--glass2);
   visibility: hidden;
   transform: translate(-50%, 104%);
-  transition: transform var(--dur-sheet, .6s) var(--sheet), max-height .45s var(--spring), bottom var(--dur-keyboard, .35s) var(--spring), visibility 0s .6s;
+  transition: transform var(--dur-sheet, 320ms) var(--sheet), max-height 320ms var(--spring), bottom var(--dur-keyboard, 250ms) var(--spring), visibility 0s 320ms;
   overflow-y: auto;
   scrollbar-width: none;
 }
@@ -1507,19 +1504,24 @@ html.refract .glass {
   justify-content: center;
   gap: 8px;
   width: 100%;
-  height: 50px;
-  border-radius: 25px;
+  height: 48px;
+  border-radius: var(--r2);
   font-weight: 700;
   font-size: 15px;
   background: var(--primary);
   color: var(--on-primary);
-  transition: transform .55s var(--spring), border-radius .5s var(--bounce), opacity .2s;
+  border: 1px solid rgba(255,255,255,.2);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 6px 18px color-mix(in srgb, var(--primary) 32%, transparent);
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  transition: transform .22s var(--spring), background-color .15s ease, opacity .15s ease, box-shadow .2s ease;
+  touch-action: manipulation;
 }
 
 .btn:active {
-  border-radius: 14px;
-  transform: scale(.96);
-  transition-duration: .15s;
+  transform: scale(.97);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.2), 0 2px 8px color-mix(in srgb, var(--primary) 20%, transparent);
+  transition-duration: .08s;
 }
 
 .btn:disabled {
