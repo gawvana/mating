@@ -78,3 +78,28 @@ async def test_share_snapshot_lifecycle(async_client: AsyncClient, auth_header_u
     # Retrieval after revocation returns 404
     after_resp = await async_client.get(f"/api/v1/share/{share_token}")
     assert after_resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_share_snapshot_unauthorized_revocation(
+    async_client: AsyncClient,
+    auth_header_user1: dict[str, str],
+    auth_header_user2: dict[str, str],
+):
+    """Verify that a user cannot revoke another user's shared snapshot (403 Forbidden)."""
+    # User 1 creates share
+    share_payload = {
+        "title": "Список пользователя 1",
+        "items": [{"name": "Яблоки", "quantity": 1.0, "unit": "кг", "category": "Овощи и фрукты"}],
+    }
+    create_resp = await async_client.post("/api/v1/share", headers=auth_header_user1, json=share_payload)
+    assert create_resp.status_code == 200
+    token = create_resp.json()["token"]
+
+    # User 2 attempts to revoke -> 403
+    del_resp = await async_client.delete(f"/api/v1/share/{token}", headers=auth_header_user2)
+    assert del_resp.status_code == 403
+
+    # Public retrieval still works
+    pub_resp = await async_client.get(f"/api/v1/share/{token}")
+    assert pub_resp.status_code == 200

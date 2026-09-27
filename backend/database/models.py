@@ -103,3 +103,35 @@ class ShoppingItem(Base):
 
     def __repr__(self) -> str:
         return f"<ShoppingItem {self.id} '{self.name}' v={self.version} purchased={self.is_purchased}>"
+
+
+class SharedSnapshot(Base):
+    __tablename__ = "mating_shared_snapshots"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)
+    token: Mapped[str] = mapped_column(
+        String(64), unique=True, nullable=False, index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("mating_users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    title: Mapped[str] = mapped_column(String(256), default="Список покупок", nullable=False)
+    snapshot_payload: Mapped[str] = mapped_column(Text, nullable=False)
+    item_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    user: Mapped[User] = relationship("User")
+
+    def __repr__(self) -> str:
+        return f"<SharedSnapshot {self.id} token={self.token[:8]} items={self.item_count}>"

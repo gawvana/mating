@@ -6,7 +6,7 @@
 
 export interface QueuedMutation {
   id: string; // client_mutation_id (UUID)
-  type: "create" | "batch_create" | "toggle" | "delete" | "restore";
+  type: "create" | "batch_create" | "toggle" | "delete" | "restore" | "update";
   payload: any;
   timestamp: number;
   retryCount: number;
@@ -164,78 +164,97 @@ export async function clearQueue(): Promise<void> {
   }
 }
 
+let isFlushingQueue = false;
+
 /**
  * Core queue processor. Iterates through pending mutations in deterministic FIFO order,
- * handles all 5 mutation types, applies exponential backoff, checks online state,
+ * handles all mutation types (create, batch_create, toggle, delete, restore, update),
+ * applies exponential backoff, checks online state, protects against parallel flush races,
  * and tracks retry counts without infinite loops.
  */
 export async function flushOfflineQueue(apiClient: any): Promise<FlushResult> {
-  const pending = await getPendingMutations();
+  if (isFlushingQueue) {
+    return { processedCount: 0, failedCount: 0, hasFailures: false };
+  }
+  isFlushingQueue = true;
+
   let processedCount = 0;
   let failedCount = 0;
 
-  for (const item of pending) {
-    // Abort replay immediately if network dropped mid-process
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
-      break;
-    }
+  try {
+    const pending = await getPendingMutations();
 
-    try {
-      await updateMutation({ ...item, status: "processing" });
-
-      switch (item.type) {
-        case "create": {
-          const payload = {
-            ...item.payload,
-            // Preserve client_mutation_id for backend idempotency
-            client_mutation_id: item.payload?.client_mutation_id || item.id,
-          };
-          await apiClient.createItem(payload);
-          break;
-        }
-
-        case "batch_create": {
-          const rawItems = Array.isArray(item.payload)
-            ? item.payload
-            : item.payload?.items || [];
-          const itemsWithIds = rawItems.map((it: any) => ({
-            ...it,
-            client_mutation_id: it.client_mutation_id || generateUUID(),
-          }));
-          await apiClient.batchCreateItems(itemsWithIds);
-          break;
-        }
-
-        case "toggle": {
-          const id = item.payload?.id;
-          const version = item.payload?.version ?? 1;
-          if (!id) throw new Error("Toggle mutation missing item id");
-          await apiClient.togglePurchased(id, version);
-          break;
-        }
-
-        case "delete": {
-          const id = typeof item.payload === "string" ? item.payload : item.payload?.id;
-          if (!id) throw new Error("Delete mutation missing item id");
-          await apiClient.deleteItem(id);
-          break;
-        }
-
-        case "restore": {
-          const id = typeof item.payload === "string" ? item.payload : item.payload?.id;
-          if (!id) throw new Error("Restore mutation missing item id");
-          await apiClient.restoreItem(id);
-          break;
-        }
-
-        default:
-          console.warn(`Unrecognized mutation type: ${(item as any).type}`);
+    for (const item of pending) {
+      // Abort replay immediately if network dropped mid-process
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        break;
       }
 
-      // Success: dequeue mutation
-      await removeMutation(item.id);
-      processedCount++;
-    } catch (err: any) {
+      try {
+        await updateMutation({ ...item, status: "processing" });
+
+        switch (item.type) {
+          case "create": {
+            const payload = {
+              ...item.payload,
+              // Preserve client_mutation_id for backend idempotency
+              client_mutation_id: item.payload?.client_mutation_id || item.id,
+            };
+            await apiClient.createItem(payload);
+            break;
+          }
+
+          case "batch_create": {
+            const rawItems = Array.isArray(item.payload)
+              ? item.payload
+              : item.payload?.items || [];
+            const itemsWithIds = rawItems.map((it: any) => ({
+              ...it,
+              client_mutation_id: it.client_mutation_id || generateUUID(),
+            }));
+            await apiClient.batchCreateItems(itemsWithIds);
+            break;
+          }
+
+          case "toggle": {
+            const id = item.payload?.id;
+            const version = item.payload?.version ?? 1;
+            if (!id) throw new Error("Toggle mutation missing item id");
+            await apiClient.togglePurchased(id, version);
+            break;
+          }
+
+          case "update": {
+            const id = item.payload?.id;
+            const version = item.payload?.version ?? 1;
+            const patch = item.payload?.data;
+            if (!id) throw new Error("Update mutation missing item id");
+            await apiClient.updateItem(id, version, patch);
+            break;
+          }
+
+          case "delete": {
+            const id = typeof item.payload === "string" ? item.payload : item.payload?.id;
+            if (!id) throw new Error("Delete mutation missing item id");
+            await apiClient.deleteItem(id);
+            break;
+          }
+
+          case "restore": {
+            const id = typeof item.payload === "string" ? item.payload : item.payload?.id;
+            if (!id) throw new Error("Restore mutation missing item id");
+            await apiClient.restoreItem(id);
+            break;
+          }
+
+          default:
+            console.warn(`Unrecognized mutation type: ${(item as any).type}`);
+        }
+
+        // Success: dequeue mutation
+        await removeMutation(item.id);
+        processedCount++;
+      } catch (err: any) {
       const statusCode = err?.statusCode || 0;
       const errorCode = err?.code || "";
 
@@ -291,6 +310,9 @@ export async function flushOfflineQueue(apiClient: any): Promise<FlushResult> {
       }
     }
   }
+} finally {
+  isFlushingQueue = false;
+}
 
   return {
     processedCount,

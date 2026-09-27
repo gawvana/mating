@@ -1,58 +1,27 @@
-"""Secure shopping list sharing endpoints with unguessable, revocable snapshot tokens."""
+"""Secure shopping list sharing endpoints with unguessable, revocable snapshot tokens backed by database persistence."""
 
 from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
 import secrets
 from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies import get_current_user
 from backend.core.config import settings
 from backend.database.engine import get_db
-from backend.database.models import User
+from backend.database.models import SharedSnapshot, User, utcnow
 from backend.services.item_service import ItemService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/share", tags=["Share List"])
-
-DATA_DIR = Path(__file__).resolve().parent.parent.parent.parent / "data"
-SNAPSHOTS_FILE = DATA_DIR / "shared_snapshots.json"
-
-
-def _load_snapshots() -> dict[str, dict[str, Any]]:
-    try:
-        if SNAPSHOTS_FILE.exists():
-            with open(SNAPSHOTS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, dict):
-                    return data
-    except Exception as exc:
-        logger.warning("Failed to load shared snapshots from %s: %s", SNAPSHOTS_FILE, exc)
-    return {}
-
-
-def _save_snapshots(data: dict[str, dict[str, Any]]) -> None:
-    try:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        temp_file = SNAPSHOTS_FILE.with_suffix(".tmp")
-        with open(temp_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        temp_file.replace(SNAPSHOTS_FILE)
-    except Exception as exc:
-        logger.warning("Failed to save shared snapshots to %s: %s", SNAPSHOTS_FILE, exc)
-
-
-# Snapshot store persisted to disk: token -> snapshot data
-# Supports point-in-time read-only snapshots without leaking user credentials
-_shared_snapshots: dict[str, dict[str, Any]] = _load_snapshots()
 
 
 class SharedItemPayload(BaseModel):
@@ -91,9 +60,10 @@ async def create_share_snapshot(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
-    """Generate an unguessable snapshot token for current list."""
+    """Generate an unguessable, cryptographically secure snapshot token and persist to database."""
     token = secrets.token_urlsafe(16)
-    now = datetime.now(timezone.utc).isoformat()
+    now_dt = utcnow()
+    now_str = now_dt.isoformat()
 
     items_data: list[SharedItemPayload] = []
     if body.items is not None and len(body.items) > 0:
@@ -114,13 +84,17 @@ async def create_share_snapshot(
             for i in user_items
         ]
 
-    _shared_snapshots[token] = {
-        "user_id": user.id,
-        "title": body.title.strip() or "Список покупок",
-        "created_at": now,
-        "items": [it.model_dump() for it in items_data],
-    }
-    _save_snapshots(_shared_snapshots)
+    serialized_payload = json.dumps([it.model_dump() for it in items_data], ensure_ascii=False)
+    snapshot = SharedSnapshot(
+        token=token,
+        user_id=user.id,
+        title=body.title.strip() or "Список покупок",
+        snapshot_payload=serialized_payload,
+        item_count=len(items_data),
+        created_at=now_dt,
+    )
+    session.add(snapshot)
+    await session.commit()
 
     base_url = settings.WEBAPP_URL.rstrip("/") if settings.WEBAPP_URL else "https://mating.vercel.app"
     share_url = f"{base_url}/?share={token}"
@@ -129,26 +103,40 @@ async def create_share_snapshot(
         token=token,
         share_url=share_url,
         item_count=len(items_data),
-        created_at=now,
+        created_at=now_str,
     )
 
 
 @router.get("/{token}", response_model=PublicSnapshotResponse)
-async def get_shared_snapshot(token: str):
+async def get_shared_snapshot(
+    token: str,
+    session: AsyncSession = Depends(get_db),
+):
     """Retrieve public read-only shared list snapshot without exposing user identity."""
-    snapshot = _shared_snapshots.get(token)
+    stmt = select(SharedSnapshot).where(
+        SharedSnapshot.token == token,
+        SharedSnapshot.revoked_at.is_(None),
+    )
+    result = await session.execute(stmt)
+    snapshot = result.scalar_one_or_none()
+
     if not snapshot:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": {"code": "SNAPSHOT_NOT_FOUND", "message": "Shared list not found or link has expired"}},
         )
 
+    try:
+        raw_items = json.loads(snapshot.snapshot_payload)
+    except Exception:
+        raw_items = []
+
     return PublicSnapshotResponse(
         token=token,
-        title=snapshot["title"],
-        item_count=len(snapshot["items"]),
-        created_at=snapshot["created_at"],
-        items=[SharedItemPayload(**item) for item in snapshot["items"]],
+        title=snapshot.title,
+        item_count=snapshot.item_count,
+        created_at=snapshot.created_at.isoformat() if hasattr(snapshot.created_at, "isoformat") else str(snapshot.created_at),
+        items=[SharedItemPayload(**item) for item in raw_items],
     )
 
 
@@ -156,21 +144,28 @@ async def get_shared_snapshot(token: str):
 async def revoke_shared_snapshot(
     token: str,
     user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
 ):
     """Revoke a previously created share token."""
-    snapshot = _shared_snapshots.get(token)
+    stmt = select(SharedSnapshot).where(
+        SharedSnapshot.token == token,
+        SharedSnapshot.revoked_at.is_(None),
+    )
+    result = await session.execute(stmt)
+    snapshot = result.scalar_one_or_none()
+
     if not snapshot:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": {"code": "SNAPSHOT_NOT_FOUND", "message": "Share link not found"}},
         )
 
-    if snapshot["user_id"] != user.id:
+    if snapshot.user_id != user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"error": {"code": "FORBIDDEN", "message": "Cannot revoke share created by another user"}},
         )
 
-    del _shared_snapshots[token]
-    _save_snapshots(_shared_snapshots)
+    snapshot.revoked_at = utcnow()
+    await session.commit()
     return {"ok": True, "revoked": token}

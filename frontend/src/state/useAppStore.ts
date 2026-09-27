@@ -420,13 +420,14 @@ export function applyThemeStyles(
   accent: string,
   radius: number,
   glass: LiquidGlassConfig,
-  masterMotion: boolean
+  masterMotion: boolean,
+  glassMode: GlassMode = "Adaptive"
 ) {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
   root.style.setProperty("--primary", accent);
-  root.style.setProperty("--p", `color-mix(in srgb, ${accent} 22%, #FBF8FF)`);
-  root.style.setProperty("--on-p", accent);
+  root.style.setProperty("--p", `color-mix(in srgb, ${accent} 20%, transparent)`);
+  root.style.setProperty("--on-p", `color-mix(in srgb, ${accent} 80%, var(--on))`);
 
   root.style.setProperty("--r1", `${Math.max(4, Math.round(radius * 0.75))}px`);
   root.style.setProperty("--r2", `${radius}px`);
@@ -439,7 +440,29 @@ export function applyThemeStyles(
   root.style.setProperty("--glass", `rgba(255,255,255, ${Math.min(0.85, 0.12 + t * 0.35).toFixed(2)})`);
   root.style.setProperty("--glass2", `rgba(255,255,255, ${Math.min(0.95, 0.35 + t * 0.45).toFixed(2)})`);
   root.style.setProperty("--edge", `rgba(255,255,255, ${(glass.borderOpacity / 100 * 0.85).toFixed(2)})`);
-  root.style.setProperty("--sh", `rgba(40,44,110, ${(glass.shadowDepth / 100 * 0.35).toFixed(2)})`);
+  root.style.setProperty("--sh", `rgba(0,0,0, ${(glass.shadowDepth / 100 * 0.35).toFixed(2)})`);
+
+  // Synchronize adaptive liquid glass runtime tiers
+  root.classList.remove(
+    "glass-full",
+    "glass-adaptive",
+    "glass-reduced",
+    "glass-minimal",
+    "glass-tier-minimal",
+    "glass-tier-reduced",
+    "perf-minimal",
+    "perf-reduced"
+  );
+  root.setAttribute("data-glass", glassMode);
+  if (glassMode === "Minimal") {
+    root.classList.add("glass-minimal", "glass-tier-minimal", "perf-minimal");
+  } else if (glassMode === "Reduced") {
+    root.classList.add("glass-reduced", "glass-tier-reduced", "perf-reduced");
+  } else if (glassMode === "Full") {
+    root.classList.add("glass-full");
+  } else {
+    root.classList.add("glass-adaptive");
+  }
 
   if (!masterMotion) {
     root.classList.add("reduced-motion");
@@ -448,6 +471,8 @@ export function applyThemeStyles(
     if (!isReduced) root.classList.remove("reduced-motion");
   }
 }
+
+const _initMotionProfile = loadMotionProfile();
 
 // Apply immediately to <html> before React mounts
 if (typeof document !== "undefined") {
@@ -460,7 +485,7 @@ if (typeof document !== "undefined") {
   if (_initMotion || !_initMasterMotion) document.documentElement.classList.add("reduced-motion");
 
   const initialRadius = _initCornerPreset === "custom" ? _initCornerCustom : CORNER_RADIUS_MAP[_initCornerPreset] || 16;
-  applyThemeStyles(_initAccent, initialRadius, _initGlassConfig, _initMasterMotion);
+  applyThemeStyles(_initAccent, initialRadius, _initGlassConfig, _initMasterMotion, _initMotionProfile.glassMode);
 }
 
 const _initLanguage: Language = normalizeLanguage(
@@ -470,8 +495,6 @@ const _initLanguage: Language = normalizeLanguage(
 const _initCurrency = (typeof localStorage !== "undefined"
   ? (localStorage.getItem("mating_currency") as "UZS" | "RUB" | "USD" | null)
   : null) ?? "UZS";
-
-const _initMotionProfile = loadMotionProfile();
 
 export const useAppStore = create<AppState>((set, get) => ({
   activeTab: getInitialTab(),
@@ -714,6 +737,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setMotionProfile: (profile) => {
     saveMotionProfile(profile);
+    const r = get().cornerRadiusPreset === "custom" ? get().cornerRadiusCustom : CORNER_RADIUS_MAP[get().cornerRadiusPreset] || 16;
+    applyThemeStyles(get().accentColor, r, get().liquidGlass, get().masterMotion, profile.glassMode);
     set({ motionProfile: profile });
   },
 
@@ -721,6 +746,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const current = get().motionProfile || DEFAULT_MOTION_PROFILE;
     const next: MotionProfile = { ...current, ...patch, preset: patch.preset || "Custom" };
     saveMotionProfile(next);
+    const r = get().cornerRadiusPreset === "custom" ? get().cornerRadiusCustom : CORNER_RADIUS_MAP[get().cornerRadiusPreset] || 16;
+    applyThemeStyles(get().accentColor, r, get().liquidGlass, get().masterMotion, next.glassMode);
     set({ motionProfile: next });
   },
 
@@ -770,12 +797,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     saveMotionProfile(next);
+    const r = get().cornerRadiusPreset === "custom" ? get().cornerRadiusCustom : CORNER_RADIUS_MAP[get().cornerRadiusPreset] || 16;
+    applyThemeStyles(get().accentColor, r, get().liquidGlass, get().masterMotion, next.glassMode);
     set({ motionProfile: next });
   },
 
   resetMotionProfile: () => {
     const next = { ...DEFAULT_MOTION_PROFILE };
     saveMotionProfile(next);
+    const r = get().cornerRadiusPreset === "custom" ? get().cornerRadiusCustom : CORNER_RADIUS_MAP[get().cornerRadiusPreset] || 16;
+    applyThemeStyles(get().accentColor, r, get().liquidGlass, get().masterMotion, next.glassMode);
     set({ motionProfile: next });
   },
 

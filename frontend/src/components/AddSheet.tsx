@@ -7,6 +7,7 @@ import { useAppStore } from "../state/useAppStore";
 import { triggerHaptic } from "../telegram/telegram";
 import { AIParsedItem, ShoppingItem } from "../types";
 import { calculateTotals, detectCategory, parseShoppingTextDeterministically } from "../utils/localParser";
+import { LiquidGlassSegment } from "./LiquidGlassSegment";
 
 const UNITS = ["шт", "кг", "г", "л", "мл", "упак"];
 
@@ -37,6 +38,7 @@ export const AddSheet: React.FC = () => {
   const language = useAppStore((s) => s.language);
   const hapticsEnabled = useAppStore((s) => s.hapticsEnabled);
   const autoCategory = useAppStore((s) => s.autoCategory);
+  const currency = useAppStore((s) => s.currency);
 
   const t = translations[language];
 
@@ -46,16 +48,12 @@ export const AddSheet: React.FC = () => {
   const sheetHeightRef = useRef<number>(400);
 
   const dragStartY = useRef<number | null>(null);
-  const dragStartTime = useRef<number>(0);
   const currentDragY = useRef<number>(0);
   const lastMoveY = useRef<number>(0);
   const lastMoveTime = useRef<number>(0);
   const pointerVelocityY = useRef<number>(0);
 
   const abortControllerRef = useRef<AbortController | null>(null);
-
-  // Detent state (compact | medium | expanded)
-  const [detent, setDetent] = useState<"compact" | "medium" | "expanded">("medium");
 
   // Stepper bump animation state
   const [isBumping, setIsBumping] = useState(false);
@@ -70,6 +68,8 @@ export const AddSheet: React.FC = () => {
   const [unit, setUnit] = useState("шт");
   const [category, setCategory] = useState("Овощи и фрукты");
   const [price, setPrice] = useState("");
+  const [showDetails, setShowDetails] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   // AI Parser Form state
   const [aiText, setAiText] = useState("");
@@ -77,9 +77,6 @@ export const AddSheet: React.FC = () => {
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
-
-  // Segment index: 0 = quick, 1 = ai
-  const segIdx = sheetMode === "quick" ? 0 : 1;
 
   // Sync initial text from store
   useEffect(() => {
@@ -92,18 +89,21 @@ export const AddSheet: React.FC = () => {
   // Sync editing item or reset on open
   useEffect(() => {
     if (isSheetOpen) {
+      setFormError(null);
       if (editingItem) {
         setName(editingItem.name || "");
         setQuantity(String(editingItem.quantity || 1));
         setUnit(editingItem.unit || "шт");
         setCategory(editingItem.category || "Овощи и фрукты");
         setPrice(editingItem.price ? String(editingItem.price) : "");
+        setShowDetails(Boolean(editingItem.price));
         setAiError(null);
       } else {
         setName("");
         setQuantity("1");
         setUnit("шт");
         setPrice("");
+        setShowDetails(false);
         setAiError(null);
       }
     }
@@ -127,18 +127,7 @@ export const AddSheet: React.FC = () => {
     }
   }, [isSheetOpen]);
 
-  // Detent initialization on open
-  useEffect(() => {
-    if (isSheetOpen) {
-      if (sheetMode === "ai" && parsedItems.length > 2) {
-        setDetent("expanded");
-      } else {
-        setDetent("medium");
-      }
-    }
-  }, [isSheetOpen, sheetMode, parsedItems.length]);
-
-  // Keyboard Sheet Adaptation (#33 & keyboardSheet setting)
+  // Keyboard Sheet Adaptation
   useEffect(() => {
     if (!isSheetOpen) return;
     const vv = window.visualViewport;
@@ -167,7 +156,7 @@ export const AddSheet: React.FC = () => {
     };
   }, [isSheetOpen, motionProfile?.keyboardSheet?.enabled]);
 
-  // FLIP Edit Continuity (#40 & editMorph setting)
+  // FLIP Edit Continuity
   useEffect(() => {
     const morphEnabled = motionProfile?.editMorph?.enabled ?? true;
     if (isSheetOpen && editingItem && editSourceRect && morphEnabled) {
@@ -221,7 +210,7 @@ export const AddSheet: React.FC = () => {
     }
   }, [isSheetOpen, editingItem, editSourceRect, motionProfile?.editMorph?.enabled]);
 
-  // Focus trap, Escape key, and inert management
+  // Focus trap and Escape key
   useEffect(() => {
     if (!isSheetOpen) return;
 
@@ -282,7 +271,7 @@ export const AddSheet: React.FC = () => {
     setTimeout(() => setIsBumping(false), 220);
   };
 
-  // Quick save mutation (handles both create and edit)
+  // Quick save mutation (handles create and edit with offline fallback)
   const saveItemMutation = useMutation({
     mutationFn: async () => {
       const cleanName = name.trim();
@@ -315,43 +304,81 @@ export const AddSheet: React.FC = () => {
       closeSheet();
     },
     onError: (err: any) => {
-      if (typeof navigator !== "undefined" && !navigator.onLine && !editingItem) {
-        const cleanName = name.trim();
-        const numQty = parseFloat(quantity) || 1;
-        const numPrice = price.trim() ? parseFloat(price.replace(",", ".")) : null;
-        enqueueMutation({
-          type: "create",
-          payload: {
-            name: cleanName,
-            quantity: numQty,
-            unit,
-            category,
-            price: numPrice && numPrice > 0 ? numPrice : null,
-          },
-        });
-        queryClient.setQueryData<ShoppingItem[]>(["items"], (old = []) => [
-          {
-            id: generateUUID(),
-            user_id: "local_temp",
-            name: cleanName,
-            quantity: numQty,
-            unit,
-            category,
-            price: numPrice && numPrice > 0 ? numPrice : null,
-            currency_code: "UZS",
-            is_purchased: false,
-            version: 1,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-          ...old,
-        ]);
+      const isOfflineMode = typeof navigator !== "undefined" && !navigator.onLine;
+      const cleanName = name.trim();
+      const numQty = parseFloat(quantity) || 1;
+      const numPrice = price.trim() ? parseFloat(price.replace(",", ".")) : null;
+
+      if (isOfflineMode) {
+        if (editingItem) {
+          // Robust Offline Edit / Update Support
+          enqueueMutation({
+            type: "update",
+            payload: {
+              id: editingItem.id,
+              version: editingItem.version,
+              data: {
+                name: cleanName,
+                quantity: numQty,
+                unit,
+                category,
+                price: numPrice && numPrice > 0 ? numPrice : null,
+              },
+            },
+          });
+          queryClient.setQueryData<ShoppingItem[]>(["items"], (old = []) =>
+            old.map((it) =>
+              it.id === editingItem.id
+                ? {
+                    ...it,
+                    name: cleanName,
+                    quantity: numQty,
+                    unit,
+                    category,
+                    price: numPrice && numPrice > 0 ? numPrice : null,
+                    version: it.version + 1,
+                    updated_at: new Date().toISOString(),
+                  }
+                : it
+            )
+          );
+        } else {
+          // Robust Offline Create Support
+          enqueueMutation({
+            type: "create",
+            payload: {
+              name: cleanName,
+              quantity: numQty,
+              unit,
+              category,
+              price: numPrice && numPrice > 0 ? numPrice : null,
+            },
+          });
+          queryClient.setQueryData<ShoppingItem[]>(["items"], (old = []) => [
+            {
+              id: generateUUID(),
+              user_id: "local_temp",
+              name: cleanName,
+              quantity: numQty,
+              unit,
+              category,
+              price: numPrice && numPrice > 0 ? numPrice : null,
+              currency_code: "UZS",
+              is_purchased: false,
+              version: 1,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+            ...old,
+          ]);
+        }
         if (hapticsEnabled) triggerHaptic("success");
         closeSheet();
         return;
       }
+
       if (hapticsEnabled) triggerHaptic("error");
-      alert(err.message || "Ошибка при сохранении товара");
+      setFormError(err.message || "Не удалось сохранить товар");
     },
   });
 
@@ -408,7 +435,7 @@ export const AddSheet: React.FC = () => {
         return;
       }
       if (hapticsEnabled) triggerHaptic("error");
-      alert(err.message || "Ошибка при пакетном добавлении товаров");
+      setAiError(err.message || "Ошибка при пакетном добавлении товаров");
     },
   });
 
@@ -440,7 +467,7 @@ export const AddSheet: React.FC = () => {
         setParsedItems(resp.items);
         setSelectedIndices(new Set(resp.items.map((_, i) => i)));
       } else {
-        setAiError("Не удалось распознать товары. Попробуйте написать в формате: Помидоры 15, Огурцы 10");
+        setAiError("Не удалось распознать товары. Попробуйте: Помидоры 15, Огурцы 10");
       }
     } catch (err: any) {
       if (err.name !== "AbortError" && err.code !== "ABORTED") {
@@ -483,11 +510,10 @@ export const AddSheet: React.FC = () => {
   const quickPrice = price ? parseFloat(price.replace(",", ".")) : null;
   const quickLineTotal = quickPrice ? quickQty * quickPrice : null;
 
-  // Pointer drag with GPU-composited scrim opacity (NO app.style.filter!)
+  // Pointer drag on Header only (isolates form scrolling from sheet drag)
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     dragStartY.current = e.clientY;
-    dragStartTime.current = e.timeStamp;
     lastMoveY.current = e.clientY;
     lastMoveTime.current = performance.now();
     pointerVelocityY.current = 0;
@@ -499,7 +525,7 @@ export const AddSheet: React.FC = () => {
 
     const sheet = sheetRef.current;
     if (sheet) {
-      sheetHeightRef.current = sheet.offsetHeight || 400; // Measure once
+      sheetHeightRef.current = sheet.offsetHeight || 400;
       sheet.style.transition = "none";
       sheet.style.willChange = "transform";
     }
@@ -519,7 +545,6 @@ export const AddSheet: React.FC = () => {
     const dy = e.clientY - dragStartY.current;
     currentDragY.current = dy;
 
-    // Track instantaneous velocity
     const now = performance.now();
     const dt = now - lastMoveTime.current;
     if (dt > 16) {
@@ -533,22 +558,19 @@ export const AddSheet: React.FC = () => {
     const scrim = scrimRef.current;
     const h = sheetHeightRef.current;
 
-    // Asymptotic resistance if dragging upward past top edge
     let effectiveY = dy;
     if (dy < 0) {
       const over = -dy;
-      effectiveY = -((over * 40) / (over + 40));
+      effectiveY = -((over * 35) / (over + 35));
     }
 
     const p = Math.max(0, Math.min(1, effectiveY / h));
-
     sheet.style.transform = `translate(-50%, ${effectiveY}px)`;
 
     if (app) {
-      const scale = 0.93 + 0.07 * p;
-      const translateY = 12 * (1 - p);
+      const scale = 0.94 + 0.06 * p;
+      const translateY = 10 * (1 - p);
       app.style.transform = `scale(${scale}) translateY(${translateY}px)`;
-      // app.style.filter is ELIMINATED!
     }
 
     if (scrim) {
@@ -584,25 +606,9 @@ export const AddSheet: React.FC = () => {
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     } catch {}
 
-    // Dismiss or detent snapping
-    if (dy > 140 || (dy > 60 && vy > 0.6)) {
-      if (detent === "expanded") {
-        setDetent("medium");
-        if (hapticsEnabled) triggerHaptic("light");
-      } else if (detent === "medium" && dy < 180) {
-        setDetent("compact");
-        if (hapticsEnabled) triggerHaptic("light");
-      } else {
-        closeSheet();
-      }
-    } else if (dy < -60 || vy < -0.5) {
-      if (detent === "compact") {
-        setDetent("medium");
-        if (hapticsEnabled) triggerHaptic("light");
-      } else if (detent === "medium") {
-        setDetent("expanded");
-        if (hapticsEnabled) triggerHaptic("light");
-      }
+    // Dismiss threshold
+    if (dy > 120 || (dy > 50 && vy > 0.5)) {
+      closeSheet();
     }
   };
 
@@ -623,7 +629,7 @@ export const AddSheet: React.FC = () => {
         aria-hidden="true"
       />
 
-      {/* Morph ghost element for FLIP transition (#40) */}
+      {/* Morph ghost element for FLIP transition */}
       {morphActive && ghostStyle && (
         <div className="edit-morph-ghost" style={ghostStyle} aria-hidden="true" />
       )}
@@ -632,7 +638,6 @@ export const AddSheet: React.FC = () => {
       <div
         ref={sheetRef}
         className={`sheet glass ${isSheetOpen ? "open" : ""}`}
-        data-detent={detent}
         role="dialog"
         aria-modal="true"
         aria-label={sheetTitle}
@@ -650,42 +655,49 @@ export const AddSheet: React.FC = () => {
           </div>
         </div>
 
-        {/* Title */}
-        <h3>{sheetTitle}</h3>
-
-        {/* Mode Segmented Control: hidden when editing a specific item */}
-        {!editingItem && (
-          <div
-            className="seg"
-            style={
-              {
-                "--seg-cols": 2,
-                "--seg-idx": segIdx,
-                "--k": segIdx,
-              } as React.CSSProperties
-            }
+        {/* Compact Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, padding: "0 4px" }}>
+          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em" }}>{sheetTitle}</h3>
+          <button
+            type="button"
+            onClick={closeSheet}
+            style={{
+              background: "rgba(255,255,255,0.08)",
+              border: "none",
+              borderRadius: "50%",
+              width: 28,
+              height: 28,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              color: "var(--muted)",
+              fontSize: 14,
+            }}
+            aria-label="Закрыть"
           >
-            <i aria-hidden="true" />
-            <button
-              type="button"
-              className={sheetMode === "quick" ? "on" : ""}
-              onClick={() => {
-                if (hapticsEnabled) triggerHaptic("selection");
-                setSheetMode("quick");
-              }}
-            >
-              {t.quickTab}
-            </button>
-            <button
-              type="button"
-              className={sheetMode === "ai" ? "on" : ""}
-              onClick={() => {
-                if (hapticsEnabled) triggerHaptic("selection");
-                setSheetMode("ai");
-              }}
-            >
-              {t.aiTab}
-            </button>
+            ✕
+          </button>
+        </div>
+
+        {/* Mode Segmented Control: hidden when editing */}
+        {!editingItem && (
+          <div style={{ marginBottom: 14 }}>
+            <LiquidGlassSegment
+              options={[
+                { value: "quick", label: t.quickTab },
+                { value: "ai", label: t.aiTab },
+              ]}
+              value={sheetMode}
+              onChange={(val) => setSheetMode(val as "quick" | "ai")}
+              size="md"
+            />
+          </div>
+        )}
+
+        {formError && (
+          <div style={{ color: "var(--err)", fontSize: 13, padding: "8px 12px", background: "color-mix(in srgb, var(--err) 12%, transparent)", borderRadius: "var(--r1)", marginBottom: 12 }}>
+            {formError}
           </div>
         )}
 
@@ -696,29 +708,43 @@ export const AddSheet: React.FC = () => {
               e.preventDefault();
               saveItemMutation.mutate();
             }}
+            style={{ display: "flex", flexDirection: "column", gap: 12 }}
           >
-            {/* Product Name Input */}
-            <div className="field-group">
-              <label className="field-label">{t.itemName}</label>
+            {/* Primary Product Name Input */}
+            <div className="field-group" style={{ marginBottom: 0 }}>
               <input
                 type="text"
                 className="text-input"
-                placeholder="Например: Помидоры"
+                placeholder="Что купить? (например: Помидоры)"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 autoFocus
+                style={{ fontSize: 16, height: 50, fontWeight: 500 }}
               />
             </div>
 
-            {/* Quantity Stepper & Unit Selector */}
-            <div className="field-group">
-              <label className="field-label">{t.quantity}</label>
-              <div className="stepper-row">
+            {/* Quantity Stepper & Sliding Unit Segment */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {/* Compact Stepper */}
+              <div
+                className="stepper-row"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  background: "var(--track)",
+                  borderRadius: "999px",
+                  padding: "3px 4px",
+                  border: "1px solid var(--outline)",
+                  width: "auto",
+                  flexShrink: 0,
+                }}
+              >
                 <button
                   type="button"
                   className="stepper-btn"
                   onClick={() => handleQuantityStep(-1)}
                   aria-label="Уменьшить"
+                  style={{ width: 32, height: 32, borderRadius: "50%", border: "none", background: "transparent", fontSize: 18, color: "var(--on)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
                 >
                   −
                 </button>
@@ -728,84 +754,157 @@ export const AddSheet: React.FC = () => {
                   className={`stepper-val ${isBumping ? "bump" : ""}`}
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value)}
+                  style={{ width: 44, textAlign: "center", border: "none", background: "transparent", fontSize: 15, fontWeight: 700, color: "var(--on)" }}
                 />
                 <button
                   type="button"
                   className="stepper-btn"
                   onClick={() => handleQuantityStep(1)}
                   aria-label="Увеличить"
+                  style={{ width: 32, height: 32, borderRadius: "50%", border: "none", background: "transparent", fontSize: 18, color: "var(--on)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
                 >
                   +
                 </button>
               </div>
 
-              {/* Units */}
-              <div className="unit-chip-row">
-                {UNITS.map((u) => (
-                  <button
-                    key={u}
-                    type="button"
-                    className={`unit-chip ${unit === u ? "on" : ""}`}
-                    onClick={() => {
-                      if (hapticsEnabled) triggerHaptic("selection");
-                      setUnit(u);
-                    }}
-                  >
-                    {u}
-                  </button>
-                ))}
+              {/* Units Sliding Selector */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <LiquidGlassSegment
+                  options={UNITS.map((u) => ({ value: u, label: u }))}
+                  value={unit}
+                  onChange={(u) => setUnit(u)}
+                  size="sm"
+                />
               </div>
             </div>
 
-            {/* Category Selector */}
-            <div className="field-group">
-              <label className="field-label">{t.category}</label>
-              <div className="cat-chip-grid">
-                {CATEGORIES.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    className={`chip ${category === c ? "on" : ""}`}
-                    onClick={() => {
-                      if (hapticsEnabled) triggerHaptic("selection");
-                      setCategory(c);
-                    }}
-                  >
-                    {c}
-                  </button>
-                ))}
-              </div>
+            {/* Collapsible Details: Category & Price */}
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowDetails(!showDetails)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--primary)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "4px 2px",
+                }}
+              >
+                <span>{showDetails ? "Скрыть подробности" : "Подробнее (цена, категория)"}</span>
+                <span style={{ fontSize: 10 }}>{showDetails ? "▲" : "▼"}</span>
+              </button>
+
+              {showDetails && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12,
+                    marginTop: 10,
+                    padding: "12px 14px",
+                    background: "color-mix(in srgb, var(--track) 60%, transparent)",
+                    borderRadius: "var(--r2)",
+                    border: "1px solid var(--outline)",
+                  }}
+                >
+                  {/* Category Horizontal Scrolling Selector */}
+                  <div>
+                    <label className="field-label" style={{ marginBottom: 6, display: "block" }}>
+                      Категория {category ? `· ${category}` : ""}
+                    </label>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 6,
+                        overflowX: "auto",
+                        paddingBottom: 4,
+                        scrollbarWidth: "none",
+                      }}
+                    >
+                      {CATEGORIES.map((c) => {
+                        const isSel = category === c;
+                        return (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => {
+                              if (hapticsEnabled) triggerHaptic("selection");
+                              setCategory(c);
+                            }}
+                            style={{
+                              padding: "6px 12px",
+                              borderRadius: "999px",
+                              border: isSel ? "1px solid var(--primary)" : "1px solid var(--outline)",
+                              background: isSel ? "var(--primary)" : "var(--track)",
+                              color: isSel ? "#ffffff" : "var(--muted)",
+                              fontSize: 12,
+                              fontWeight: isSel ? 700 : 500,
+                              cursor: "pointer",
+                              whiteSpace: "nowrap",
+                              flexShrink: 0,
+                              transition: "all 0.15s ease",
+                            }}
+                          >
+                            {c}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Price Input */}
+                  <div>
+                    <label className="field-label" style={{ marginBottom: 6, display: "block" }}>
+                      {t.price} ({currency})
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      className="text-input"
+                      placeholder="0"
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value)}
+                      style={{ height: 42, fontSize: 14 }}
+                    />
+                  </div>
+
+                  {/* Line Total Preview */}
+                  {quickLineTotal !== null && quickLineTotal > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, paddingTop: 4 }}>
+                      <span style={{ color: "var(--muted)" }}>{t.estimatedTotal}:</span>
+                      <b style={{ color: "var(--primary)", fontSize: 14 }}>
+                        {formatCurrency(quickLineTotal, currency, language)}
+                      </b>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* Price Input */}
-            <div className="field-group">
-              <label className="field-label">
-                {t.price} ({language === "uz" ? "so'm" : "сум"})
-              </label>
-              <input
-                type="text"
-                inputMode="decimal"
-                className="text-input"
-                placeholder="0"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-              />
-            </div>
-
-            {/* Line Total Preview */}
-            {quickLineTotal !== null && quickLineTotal > 0 && (
-              <div className="line-total-preview">
-                <span>{t.estimatedTotal}:</span>
-                <b>{formatCurrency(quickLineTotal, "UZS", language)}</b>
-              </div>
-            )}
-
-            {/* Add / Save Button */}
+            {/* Sticky Primary CTA */}
             <button
               type="submit"
               className="btn press"
               disabled={!name.trim() || saveItemMutation.isPending}
-              style={{ marginTop: 16 }}
+              style={{
+                marginTop: 6,
+                height: 48,
+                borderRadius: "var(--r2)",
+                background: "var(--primary)",
+                color: "#ffffff",
+                fontSize: 15,
+                fontWeight: 700,
+                border: "none",
+                boxShadow: "0 4px 16px color-mix(in srgb, var(--primary) 35%, transparent)",
+                cursor: !name.trim() || saveItemMutation.isPending ? "not-allowed" : "pointer",
+                opacity: !name.trim() ? 0.45 : 1,
+              }}
             >
               {submitBtnText}
             </button>
@@ -814,15 +913,16 @@ export const AddSheet: React.FC = () => {
 
         {/* ── AI ADD TAB (Only when not editing) ── */}
         {sheetMode === "ai" && !editingItem && (
-          <div>
-            <div className="field-group">
-              <label className="field-label">Напишите список текстом (RU, UZ, EN)</label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div className="field-group" style={{ marginBottom: 0 }}>
+              <label className="field-label">Напишите товары текстом (RU, UZ, EN)</label>
               <textarea
                 className="text-area"
-                rows={4}
+                rows={3}
                 placeholder="Помидоры 2 кг 15000&#10;Огурцы 1 кг 12000&#10;Хлеб 2 шт за 10000"
                 value={aiText}
                 onChange={(e) => setAiText(e.target.value)}
+                style={{ width: "100%", borderRadius: "var(--r2)", border: "1.5px solid var(--outline)", background: "var(--n)", color: "var(--on)", padding: "10px 12px", fontSize: 14, fontFamily: "inherit" }}
               />
             </div>
 
@@ -831,26 +931,27 @@ export const AddSheet: React.FC = () => {
               className="btn tn press"
               onClick={handleParseAI}
               disabled={!aiText.trim() || isAiLoading}
+              style={{ height: 42, borderRadius: "var(--r2)", fontSize: 14, fontWeight: 700 }}
             >
               {isAiLoading ? "Распознавание..." : "Разобрать список"}
             </button>
 
             {aiError && (
-              <div style={{ color: "var(--err)", fontSize: 13, marginTop: 8, textAlign: "center" }}>
+              <div style={{ color: "var(--err)", fontSize: 13, textAlign: "center", padding: "6px 10px", background: "color-mix(in srgb, var(--err) 12%, transparent)", borderRadius: "var(--r1)" }}>
                 {aiError}
               </div>
             )}
 
             {/* Parsed Items Preview List */}
             {parsedItems.length > 0 && (
-              <div style={{ marginTop: 16 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: 12, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase" }}>
-                    Найдено ({parsedItems.length})
+                    Распознано ({parsedItems.length})
                   </span>
                   <button
                     type="button"
-                    style={{ fontSize: 12, color: "var(--primary)", fontWeight: 700 }}
+                    style={{ fontSize: 12, color: "var(--primary)", fontWeight: 700, background: "none", border: "none", cursor: "pointer" }}
                     onClick={() => {
                       if (selectedIndices.size === parsedItems.length) {
                         setSelectedIndices(new Set());
@@ -863,13 +964,16 @@ export const AddSheet: React.FC = () => {
                   </button>
                 </div>
 
-                <div className="ai-preview-container">
+                <div
+                  className="ai-preview-container"
+                  style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 220, overflowY: "auto", paddingRight: 2 }}
+                >
                   {parsedItems.map((item, idx) => {
                     const isSelected = selectedIndices.has(idx);
                     return (
                       <div
                         key={idx}
-                        className={`ai-preview-card ${isSelected ? "selected" : ""}`}
+                        className={`ai-preview-row ${isSelected ? "selected" : "deselected"}`}
                         role="checkbox"
                         tabIndex={0}
                         aria-checked={isSelected}
@@ -882,7 +986,10 @@ export const AddSheet: React.FC = () => {
                           }
                         }}
                       >
-                        <div className={`item-check ${isSelected ? "checked" : ""}`} aria-hidden="true">
+                        <div
+                          className={`preview-checkbox ${isSelected ? "checked" : ""}`}
+                          aria-hidden="true"
+                        >
                           {isSelected && (
                             <svg viewBox="0 0 24 24">
                               <path d="M20 6L9 17l-5-5" />
@@ -890,31 +997,33 @@ export const AddSheet: React.FC = () => {
                           )}
                         </div>
 
-                        <div className="item-body">
-                          <div className="item-name">{item.name}</div>
-                          <div className="item-meta">
-                            <span>
-                              {item.quantity} {item.unit}
-                            </span>
-                            <span className="item-tag">{item.category}</span>
-                          </div>
+                        <div className="preview-item-info">
+                          <span className="preview-item-name">{item.name}</span>
+                          <span className="preview-item-meta">
+                            {item.quantity} {item.unit} • {item.category}
+                          </span>
                         </div>
 
                         {item.estimated_price !== null && (
-                          <div className="item-price-col">
-                            <span className="item-price-val">
-                              {formatCurrency(item.quantity * item.estimated_price, "UZS", language)}
-                            </span>
-                          </div>
+                          <span className="preview-item-price">
+                            {formatCurrency(item.quantity * item.estimated_price, currency, language)}
+                          </span>
                         )}
 
                         <button
                           type="button"
-                          className="item-del-btn"
                           aria-label={`Удалить ${item.name}`}
                           onClick={(e) => {
                             e.stopPropagation();
                             removeParsedItem(idx);
+                          }}
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            color: "var(--muted)",
+                            fontSize: 14,
+                            cursor: "pointer",
+                            padding: "4px 8px",
                           }}
                         >
                           ✕
@@ -925,26 +1034,38 @@ export const AddSheet: React.FC = () => {
                 </div>
 
                 {/* Deterministic Grand Total Summary */}
-                <div className="ai-preview-total">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, fontWeight: 700, padding: "8px 12px", background: "var(--track)", borderRadius: "var(--r1)" }}>
                   <span>Выбрано: {previewTotals.count} поз.</span>
                   {previewTotals.hasPrices && (
-                    <span>Итого: {formatCurrency(previewTotals.grandTotal, "UZS", language)}</span>
+                    <span style={{ color: "var(--primary)" }}>
+                      Итого: {formatCurrency(previewTotals.grandTotal, currency, language)}
+                    </span>
                   )}
                 </div>
 
                 {/* Batch Add Actions */}
-                <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-                  <button
-                    type="button"
-                    className="btn press"
-                    disabled={selectedItems.length === 0 || batchCreateMutation.isPending}
-                    onClick={() => batchCreateMutation.mutate(selectedItems)}
-                  >
-                    {batchCreateMutation.isPending
-                      ? "Добавление..."
-                      : `Добавить выбранное (${selectedItems.length})`}
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  className="btn press"
+                  disabled={selectedItems.length === 0 || batchCreateMutation.isPending}
+                  onClick={() => batchCreateMutation.mutate(selectedItems)}
+                  style={{
+                    height: 48,
+                    borderRadius: "var(--r2)",
+                    background: "var(--primary)",
+                    color: "#ffffff",
+                    fontSize: 15,
+                    fontWeight: 700,
+                    border: "none",
+                    boxShadow: "0 4px 16px color-mix(in srgb, var(--primary) 35%, transparent)",
+                    cursor: selectedItems.length === 0 || batchCreateMutation.isPending ? "not-allowed" : "pointer",
+                    opacity: selectedItems.length === 0 ? 0.45 : 1,
+                  }}
+                >
+                  {batchCreateMutation.isPending
+                    ? "Добавление..."
+                    : `Добавить выбранное (${selectedItems.length})`}
+                </button>
               </div>
             )}
           </div>

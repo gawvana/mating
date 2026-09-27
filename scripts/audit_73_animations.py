@@ -57,7 +57,8 @@ async def run_audit():
                 "deviceScaleFactor": 2,
                 "mobile": True,
             })
-            await asyncio.sleep(1.5)
+            await send("Page.navigate", {"url": TARGET_URL})
+            await asyncio.sleep(2.5)
 
             # Wait for React mount
             mounted = False
@@ -131,31 +132,36 @@ async def run_audit():
             seg_res_1 = await send("Runtime.evaluate", {
                 "expression": """
                 (() => {
-                    const seg = document.querySelector('.sheet .seg');
-                    const thumb = seg ? seg.querySelector('i') : null;
+                    const seg = document.querySelector('.sheet .glass-seg-track') || document.querySelector('.sheet .seg');
+                    const thumb = seg ? (seg.querySelector('.glass-seg-lens') || seg.querySelector('i')) : null;
                     return {
-                        segIdx: seg ? seg.style.getPropertyValue('--seg-idx') : null,
-                        thumbT: thumb ? window.getComputedStyle(thumb).transform : null
+                        hasSeg: Boolean(seg),
+                        lensT: thumb ? window.getComputedStyle(thumb).transform : null
                     };
                 })()
                 """,
                 "returnByValue": True
             })
 
-            # Click AI tab
+            # Click second segment option
             await send("Runtime.evaluate", {
-                "expression": "document.querySelectorAll('.sheet .seg button')[1].click()"
+                "expression": """
+                (() => {
+                    const btns = document.querySelectorAll('.sheet .glass-seg-btn, .sheet .seg button');
+                    if (btns.length > 1) btns[1].click();
+                })()
+                """
             })
             await asyncio.sleep(0.6)
 
             seg_res_2 = await send("Runtime.evaluate", {
                 "expression": """
                 (() => {
-                    const seg = document.querySelector('.sheet .seg');
-                    const thumb = seg ? seg.querySelector('i') : null;
+                    const seg = document.querySelector('.sheet .glass-seg-track') || document.querySelector('.sheet .seg');
+                    const thumb = seg ? (seg.querySelector('.glass-seg-lens') || seg.querySelector('i')) : null;
                     return {
-                        segIdx: seg ? seg.style.getPropertyValue('--seg-idx') : null,
-                        thumbT: thumb ? window.getComputedStyle(thumb).transform : null
+                        hasSeg: Boolean(seg),
+                        lensT: thumb ? window.getComputedStyle(thumb).transform : null
                     };
                 })()
                 """,
@@ -206,9 +212,9 @@ async def run_audit():
                 "returnByValue": True
             })
 
-            # Click Stats tab (index 1)
+            # Click Stats tab (index 3)
             await send("Runtime.evaluate", {
-                "expression": "document.querySelectorAll('.dock .tab')[1].click()"
+                "expression": "document.querySelectorAll('.dock .tab')[3].click()"
             })
             await asyncio.sleep(0.7)
 
@@ -226,9 +232,9 @@ async def run_audit():
                 "returnByValue": True
             })
 
-            # Click Settings tab (index 2)
+            # Click Settings tab (index 4)
             await send("Runtime.evaluate", {
-                "expression": "document.querySelectorAll('.dock .tab')[2].click()"
+                "expression": "document.querySelectorAll('.dock .tab')[4].click()"
             })
             await asyncio.sleep(0.7)
 
@@ -248,15 +254,15 @@ async def run_audit():
 
             print("\n=== RUNTIME DOCK LENS EVIDENCE ===")
             print("Tab 0 (List):", dock_res_1.get("result", {}).get("value"))
-            print("Tab 1 (Stats):", dock_res_2.get("result", {}).get("value"))
-            print("Tab 2 (Settings):", dock_res_3.get("result", {}).get("value"))
+            print("Tab 3 (Stats):", dock_res_2.get("result", {}).get("value"))
+            print("Tab 4 (Settings):", dock_res_3.get("result", {}).get("value"))
 
             # Test 3: Settings switch toggle
             sw_res_1 = await send("Runtime.evaluate", {
                 "expression": """
                 (() => {
-                    const sw = document.querySelector('.settings-row .sw');
-                    const thumb = sw ? sw.querySelector('i') : null;
+                    const sw = document.querySelector('.settings-row .glass-switch-track') || document.querySelector('.settings-row .sw');
+                    const thumb = sw ? (sw.querySelector('.glass-switch-thumb') || sw.querySelector('i')) : null;
                     return {
                         checked: sw ? sw.getAttribute('aria-checked') : null,
                         thumbT: thumb ? window.getComputedStyle(thumb).transform : null
@@ -268,15 +274,20 @@ async def run_audit():
 
             # Click switch
             await send("Runtime.evaluate", {
-                "expression": "document.querySelector('.settings-row .sw').click()"
+                "expression": """
+                (() => {
+                    const sw = document.querySelector('.settings-row .glass-switch-track') || document.querySelector('.settings-row .sw');
+                    if (sw) sw.click();
+                })()
+                """
             })
             await asyncio.sleep(0.6)
 
             sw_res_2 = await send("Runtime.evaluate", {
                 "expression": """
                 (() => {
-                    const sw = document.querySelector('.settings-row .sw');
-                    const thumb = sw ? sw.querySelector('i') : null;
+                    const sw = document.querySelector('.settings-row .glass-switch-track') || document.querySelector('.settings-row .sw');
+                    const thumb = sw ? (sw.querySelector('.glass-switch-thumb') || sw.querySelector('i')) : null;
                     return {
                         checked: sw ? sw.getAttribute('aria-checked') : null,
                         thumbT: thumb ? window.getComputedStyle(thumb).transform : null

@@ -7,8 +7,15 @@ import { SmartSortMode, useAppStore } from "../state/useAppStore";
 import { triggerHaptic } from "../telegram/telegram";
 import { ShoppingItem } from "../types";
 import { SwipeableItem } from "../components/SwipeableItem";
+import { detectCategory } from "../utils/localParser";
 
 const ALL_CATEGORY = "Все";
+
+const EMPTY_SUGGESTIONS: Record<string, string[]> = {
+  ru: ["Молоко", "Хлеб", "Яйца", "Бананы", "Сыр", "Кофе"],
+  uz: ["Sut", "Non", "Tuxum", "Banan", "Pishloq", "Choy"],
+  en: ["Milk", "Bread", "Eggs", "Bananas", "Cheese", "Coffee"],
+};
 
 // ── Smooth Animated Counter for Numbers (Direct DOM Mutation, 0 React Rerenders) ──
 export const AnimatedCounter: React.FC<{
@@ -386,9 +393,9 @@ export const ListScreen: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [draggedCat, setDraggedCat] = useState<string | null>(null);
 
-  // Drag and drop manual reordering state
-  const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  // Drag and drop manual reordering state (Ref-based for 0 React re-renders during 60/120 FPS drag)
+  const draggedItemIdRef = useRef<string | null>(null);
+  const dragOverIndexRef = useRef<number | null>(null);
   const dragStartY = useRef(0);
   const activeDragElement = useRef<HTMLElement | null>(null);
   const containerTopRef = useRef<number>(0);
@@ -631,6 +638,36 @@ export const ListScreen: React.FC = () => {
     openEditSheet(item, rect);
   }, [openEditSheet]);
 
+  const handleAddSuggestion = useCallback(async (suggestedName: string) => {
+    if (hapticsEnabled) triggerHaptic("medium");
+    const category = detectCategory(suggestedName);
+    try {
+      await api.createItem({
+        name: suggestedName,
+        quantity: 1,
+        unit: "шт",
+        category,
+      });
+      queryClient.invalidateQueries({ queryKey: ["items"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+      triggerSuccess(suggestedName + " +");
+    } catch {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        enqueueMutation({
+          type: "create",
+          payload: {
+            name: suggestedName,
+            quantity: 1,
+            unit: "шт",
+            category,
+          },
+        });
+        queryClient.invalidateQueries({ queryKey: ["items"] });
+        triggerSuccess(suggestedName + " (офлайн)");
+      }
+    }
+  }, [hapticsEnabled, queryClient, triggerSuccess]);
+
   // Group active and purchased items safely
   const { activeItems, purchasedItems, rawCategories } = useMemo(() => {
     const safeList = Array.isArray(items) ? items : [];
@@ -743,10 +780,11 @@ export const ListScreen: React.FC = () => {
     return Array.from(map.entries());
   }, [sortedActive, selectedCategory, searchQuery, smartSortMode]);
 
-  // Drag and drop reorder handlers (60/120 FPS layout-free arithmetic)
+  // Drag and drop reorder handlers (60/120 FPS layout-free arithmetic, 0 React re-renders during active drag)
   const handleStartDrag = useCallback((itemId: string, e: React.PointerEvent) => {
     if (hapticsEnabled) triggerHaptic("medium");
-    setDraggedItemId(itemId);
+    draggedItemIdRef.current = itemId;
+    dragOverIndexRef.current = null;
     dragStartY.current = e.clientY;
     const target = e.currentTarget as HTMLElement;
     activeDragElement.current = target.closest(".swipe-item") as HTMLElement;
@@ -769,7 +807,7 @@ export const ListScreen: React.FC = () => {
   }, [hapticsEnabled]);
 
   const handleDragPointerMove = useCallback((e: React.PointerEvent) => {
-    if (!draggedItemId) return;
+    if (!draggedItemIdRef.current) return;
     const dy = e.clientY - dragStartY.current;
     if (activeDragElement.current) {
       activeDragElement.current.style.transform = `translateY(${dy}px) scale(1.02)`;
@@ -782,15 +820,16 @@ export const ListScreen: React.FC = () => {
     const top = containerTopRef.current;
     if (count > 0 && h > 0) {
       const hoverIndex = Math.max(0, Math.min(count - 1, Math.floor((e.clientY - top) / h)));
-      if (hoverIndex !== dragOverIndex) {
-        setDragOverIndex(hoverIndex);
+      if (hoverIndex !== dragOverIndexRef.current) {
+        dragOverIndexRef.current = hoverIndex;
         if (hapticsEnabled) triggerHaptic("selection");
       }
     }
-  }, [draggedItemId, dragOverIndex, hapticsEnabled]);
+  }, [hapticsEnabled]);
 
   const handleDragPointerUp = useCallback((e: React.PointerEvent) => {
-    if (!draggedItemId) return;
+    const draggedId = draggedItemIdRef.current;
+    if (!draggedId) return;
     if (activeDragElement.current) {
       activeDragElement.current.style.transform = "";
       activeDragElement.current.style.zIndex = "";
@@ -800,8 +839,8 @@ export const ListScreen: React.FC = () => {
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     } catch {}
 
-    const fromIdx = sortedActive.findIndex((i) => i.id === draggedItemId);
-    const toIdx = dragOverIndex;
+    const fromIdx = sortedActive.findIndex((i) => i.id === draggedId);
+    const toIdx = dragOverIndexRef.current;
 
     if (fromIdx !== -1 && toIdx !== null && toIdx !== -1 && fromIdx !== toIdx) {
       const newItems = [...sortedActive];
@@ -813,10 +852,10 @@ export const ListScreen: React.FC = () => {
       if (hapticsEnabled) triggerHaptic("light");
     }
 
-    setDraggedItemId(null);
-    setDragOverIndex(null);
+    draggedItemIdRef.current = null;
+    dragOverIndexRef.current = null;
     activeDragElement.current = null;
-  }, [draggedItemId, dragOverIndex, sortedActive, setCustomItemOrder, setSmartSortMode, hapticsEnabled]);
+  }, [sortedActive, setCustomItemOrder, setSmartSortMode, hapticsEnabled]);
 
   // Share list snapshot handler
   const handleShareList = async () => {
@@ -1005,8 +1044,8 @@ export const ListScreen: React.FC = () => {
           <p>{t.emptySubtitle}</p>
           <button
             type="button"
-            className="btn press"
-            style={{ width: "auto", padding: "0 28px" }}
+            className="btn press primary"
+            style={{ width: "auto", padding: "0 28px", height: 44 }}
             onClick={() => {
               if (hapticsEnabled) triggerHaptic("medium");
               openQuickAdd();
@@ -1014,6 +1053,22 @@ export const ListScreen: React.FC = () => {
           >
             {t.emptyAddBtn}
           </button>
+
+          <div className="empty-suggestions">
+            <div className="empty-suggestions-label">
+              {language === "uz" ? "Tezkor qo'shish:" : language === "en" ? "Quick add:" : "Быстрое добавление:"}
+            </div>
+            {(EMPTY_SUGGESTIONS[language] || EMPTY_SUGGESTIONS.ru).map((item) => (
+              <button
+                key={item}
+                type="button"
+                className="empty-chip press"
+                onClick={() => handleAddSuggestion(item)}
+              >
+                + {item}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

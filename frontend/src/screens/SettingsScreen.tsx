@@ -17,6 +17,34 @@ import {
   useAppStore,
 } from "../state/useAppStore";
 import { triggerHaptic } from "../telegram/telegram";
+import { LiquidGlassSwitch } from "../components/LiquidGlassSwitch";
+import { LiquidGlassSegment } from "../components/LiquidGlassSegment";
+
+const LANGUAGE_OPTIONS = [
+  { value: "ru", label: "RU" },
+  { value: "uz", label: "UZ" },
+  { value: "en", label: "EN" },
+];
+
+const CURRENCY_OPTIONS = [
+  { value: "UZS", label: "UZS" },
+  { value: "RUB", label: "RUB" },
+  { value: "USD", label: "USD" },
+];
+
+const THEME_OPTIONS = [
+  { value: "auto", label: "Авто" },
+  { value: "light", label: "Светлая" },
+  { value: "dark", label: "Тёмная" },
+];
+
+const CORNER_RADIUS_OPTIONS = [
+  { value: "sharp", label: "Sharp" },
+  { value: "standard", label: "Std" },
+  { value: "soft", label: "Soft" },
+  { value: "round", label: "Round" },
+  { value: "custom", label: "Custom" },
+];
 
 const ACCENT_PALETTE = [
   { name: "Indigo", hex: "#4F5DFF" },
@@ -177,6 +205,14 @@ export const SettingsScreen: React.FC = () => {
   const t = translations[language] || translations.ru;
   const [animListOpen, setAnimListOpen] = useState(false);
   const [activePreviewKey, setActivePreviewKey] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage((cur) => (cur === msg ? null : cur));
+    }, 2800);
+  };
 
   const clearPurchasedMutation = useMutation({
     mutationFn: () => api.clearPurchased(),
@@ -184,7 +220,7 @@ export const SettingsScreen: React.FC = () => {
       if (hapticsEnabled) triggerHaptic("heavy");
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["stats"] });
-      alert("Купленные товары успешно очищены");
+      showToast("Купленные товары успешно очищены");
     },
   });
 
@@ -214,6 +250,33 @@ export const SettingsScreen: React.FC = () => {
 
   return (
     <div style={{ paddingTop: 8 }}>
+      {toastMessage && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: "sticky",
+            top: 8,
+            zIndex: 99,
+            margin: "0 auto 12px",
+            padding: "8px 16px",
+            background: "color-mix(in srgb, var(--primary) 20%, rgba(10, 10, 16, 0.92))",
+            border: "1px solid color-mix(in srgb, var(--primary) 45%, transparent)",
+            borderRadius: "999px",
+            backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
+            color: "var(--on)",
+            fontSize: "13px",
+            fontWeight: 600,
+            textAlign: "center",
+            boxShadow: "0 4px 16px rgba(0, 0, 0, 0.35)",
+            animation: "fadeIn .25s ease-out",
+          }}
+        >
+          {toastMessage}
+        </div>
+      )}
+
       {/* ── ОБЩИЕ ── */}
       <div className="settings-group-title">{t.secGeneral || "ОБЩИЕ"}</div>
       <div className="settings-group">
@@ -223,50 +286,17 @@ export const SettingsScreen: React.FC = () => {
             <div className="settings-row-label">{t.language || "Язык интерфейса"}</div>
             <div className="settings-row-desc">Язык интерфейса приложения</div>
           </div>
-          <div
-            className="seg"
-            style={
-              {
-                width: 140,
-                margin: 0,
-                "--seg-cols": 3,
-                "--seg-idx": language === "ru" ? 0 : language === "uz" ? 1 : 2,
-                "--k": language === "ru" ? 0 : language === "uz" ? 1 : 2,
-              } as React.CSSProperties
-            }
-          >
-            <i aria-hidden="true" />
-            <button
-              type="button"
-              className={language === "ru" ? "on" : ""}
-              onClick={() => {
-                if (hapticsEnabled) triggerHaptic("selection");
-                setLanguage("ru");
-              }}
-            >
-              RU
-            </button>
-            <button
-              type="button"
-              className={language === "uz" ? "on" : ""}
-              onClick={() => {
-                if (hapticsEnabled) triggerHaptic("selection");
-                setLanguage("uz");
-              }}
-            >
-              UZ
-            </button>
-            <button
-              type="button"
-              className={language === "en" ? "on" : ""}
-              onClick={() => {
-                if (hapticsEnabled) triggerHaptic("selection");
-                setLanguage("en");
-              }}
-            >
-              EN
-            </button>
-          </div>
+          <LiquidGlassSegment
+            options={LANGUAGE_OPTIONS}
+            value={language}
+            onChange={(val) => {
+              if (hapticsEnabled) triggerHaptic("selection");
+              setLanguage(val as any);
+            }}
+            size="sm"
+            style={{ width: 140 }}
+            ariaLabel="Язык интерфейса"
+          />
         </div>
 
         {/* Валюта */}
@@ -275,50 +305,17 @@ export const SettingsScreen: React.FC = () => {
             <div className="settings-row-label">{t.currency || "Основная валюта"}</div>
             <div className="settings-row-desc">Основная валюта для подсчётов</div>
           </div>
-          <div
-            className="seg"
-            style={
-              {
-                width: 150,
-                margin: 0,
-                "--seg-cols": 3,
-                "--seg-idx": currency === "UZS" ? 0 : currency === "RUB" ? 1 : 2,
-                "--k": currency === "UZS" ? 0 : currency === "RUB" ? 1 : 2,
-              } as React.CSSProperties
-            }
-          >
-            <i aria-hidden="true" />
-            <button
-              type="button"
-              className={currency === "UZS" ? "on" : ""}
-              onClick={() => {
-                if (hapticsEnabled) triggerHaptic("selection");
-                setCurrency("UZS");
-              }}
-            >
-              UZS
-            </button>
-            <button
-              type="button"
-              className={currency === "RUB" ? "on" : ""}
-              onClick={() => {
-                if (hapticsEnabled) triggerHaptic("selection");
-                setCurrency("RUB");
-              }}
-            >
-              RUB
-            </button>
-            <button
-              type="button"
-              className={currency === "USD" ? "on" : ""}
-              onClick={() => {
-                if (hapticsEnabled) triggerHaptic("selection");
-                setCurrency("USD");
-              }}
-            >
-              USD
-            </button>
-          </div>
+          <LiquidGlassSegment
+            options={CURRENCY_OPTIONS}
+            value={currency}
+            onChange={(val) => {
+              if (hapticsEnabled) triggerHaptic("selection");
+              setCurrency(val as any);
+            }}
+            size="sm"
+            style={{ width: 150 }}
+            ariaLabel="Основная валюта"
+          />
         </div>
       </div>
 
@@ -330,18 +327,11 @@ export const SettingsScreen: React.FC = () => {
             <div className="settings-row-label">{t.showPurchased || "Показывать купленные"}</div>
             <div className="settings-row-desc">Отображать блок купленных позиций внизу</div>
           </div>
-          <button
-            type="button"
-            className="sw"
-            role="switch"
-            aria-checked={showPurchased}
-            onClick={() => {
-              if (hapticsEnabled) triggerHaptic("selection");
-              setShowPurchased(!showPurchased);
-            }}
-          >
-            <i />
-          </button>
+          <LiquidGlassSwitch
+            checked={showPurchased}
+            onChange={setShowPurchased}
+            ariaLabel={t.showPurchased || "Показывать купленные"}
+          />
         </div>
 
         <div className="settings-row">
@@ -349,18 +339,11 @@ export const SettingsScreen: React.FC = () => {
             <div className="settings-row-label">{t.compactMode || "Компактный режим"}</div>
             <div className="settings-row-desc">Уменьшенные отступы для большего числа товаров</div>
           </div>
-          <button
-            type="button"
-            className="sw"
-            role="switch"
-            aria-checked={compactMode}
-            onClick={() => {
-              if (hapticsEnabled) triggerHaptic("selection");
-              setCompactMode(!compactMode);
-            }}
-          >
-            <i />
-          </button>
+          <LiquidGlassSwitch
+            checked={compactMode}
+            onChange={setCompactMode}
+            ariaLabel={t.compactMode || "Компактный режим"}
+          />
         </div>
 
         <div className="settings-row">
@@ -368,18 +351,11 @@ export const SettingsScreen: React.FC = () => {
             <div className="settings-row-label">{t.confirmDelete || "Подтверждать удаление"}</div>
             <div className="settings-row-desc">Спрашивать подтверждение перед удалением</div>
           </div>
-          <button
-            type="button"
-            className="sw"
-            role="switch"
-            aria-checked={confirmDelete}
-            onClick={() => {
-              if (hapticsEnabled) triggerHaptic("selection");
-              setConfirmDelete(!confirmDelete);
-            }}
-          >
-            <i />
-          </button>
+          <LiquidGlassSwitch
+            checked={confirmDelete}
+            onChange={setConfirmDelete}
+            ariaLabel={t.confirmDelete || "Подтверждать удаление"}
+          />
         </div>
       </div>
 
@@ -391,41 +367,14 @@ export const SettingsScreen: React.FC = () => {
             <div className="settings-row-label">{t.theme || "Тема оформления"}</div>
             <div className="settings-row-desc">Оформление приложения</div>
           </div>
-          <div
-            className="seg"
-            style={
-              {
-                width: 170,
-                margin: 0,
-                "--seg-cols": 3,
-                "--seg-idx": theme === "auto" ? 0 : theme === "light" ? 1 : 2,
-                "--k": theme === "auto" ? 0 : theme === "light" ? 1 : 2,
-              } as React.CSSProperties
-            }
-          >
-            <i aria-hidden="true" />
-            <button
-              type="button"
-              className={theme === "auto" ? "on" : ""}
-              onClick={() => handleThemeChange("auto")}
-            >
-              Авто
-            </button>
-            <button
-              type="button"
-              className={theme === "light" ? "on" : ""}
-              onClick={() => handleThemeChange("light")}
-            >
-              Светлая
-            </button>
-            <button
-              type="button"
-              className={theme === "dark" ? "on" : ""}
-              onClick={() => handleThemeChange("dark")}
-            >
-              Тёмная
-            </button>
-          </div>
+          <LiquidGlassSegment
+            options={THEME_OPTIONS}
+            value={theme}
+            onChange={(val) => handleThemeChange(val as any)}
+            size="sm"
+            style={{ width: 180 }}
+            ariaLabel="Тема оформления"
+          />
         </div>
 
         <div className="settings-row">
@@ -433,18 +382,11 @@ export const SettingsScreen: React.FC = () => {
             <div className="settings-row-label">Мастер-переключатель анимаций</div>
             <div className="settings-row-desc">Мгновенное отключение всей системы движения</div>
           </div>
-          <button
-            type="button"
-            className="sw"
-            role="switch"
-            aria-checked={masterMotion}
-            onClick={() => {
-              if (hapticsEnabled) triggerHaptic("selection");
-              setMasterMotion(!masterMotion);
-            }}
-          >
-            <i />
-          </button>
+          <LiquidGlassSwitch
+            checked={masterMotion}
+            onChange={setMasterMotion}
+            ariaLabel="Мастер-переключатель анимаций"
+          />
         </div>
 
         {/* Accent Color */}
@@ -508,58 +450,17 @@ export const SettingsScreen: React.FC = () => {
             </span>
           </div>
 
-          <div className="seg" style={{ width: "100%", margin: 0, "--seg-cols": 5 } as React.CSSProperties}>
-            <button
-              type="button"
-              className={cornerRadiusPreset === "sharp" ? "on" : ""}
-              onClick={() => {
-                if (hapticsEnabled) triggerHaptic("selection");
-                setCornerRadiusPreset("sharp");
-              }}
-            >
-              Sharp (8)
-            </button>
-            <button
-              type="button"
-              className={cornerRadiusPreset === "standard" ? "on" : ""}
-              onClick={() => {
-                if (hapticsEnabled) triggerHaptic("selection");
-                setCornerRadiusPreset("standard");
-              }}
-            >
-              Std (16)
-            </button>
-            <button
-              type="button"
-              className={cornerRadiusPreset === "soft" ? "on" : ""}
-              onClick={() => {
-                if (hapticsEnabled) triggerHaptic("selection");
-                setCornerRadiusPreset("soft");
-              }}
-            >
-              Soft (22)
-            </button>
-            <button
-              type="button"
-              className={cornerRadiusPreset === "round" ? "on" : ""}
-              onClick={() => {
-                if (hapticsEnabled) triggerHaptic("selection");
-                setCornerRadiusPreset("round");
-              }}
-            >
-              Round (28)
-            </button>
-            <button
-              type="button"
-              className={cornerRadiusPreset === "custom" ? "on" : ""}
-              onClick={() => {
-                if (hapticsEnabled) triggerHaptic("selection");
-                setCornerRadiusPreset("custom");
-              }}
-            >
-              Custom
-            </button>
-          </div>
+          <LiquidGlassSegment
+            options={CORNER_RADIUS_OPTIONS}
+            value={cornerRadiusPreset}
+            onChange={(val) => {
+              if (hapticsEnabled) triggerHaptic("selection");
+              setCornerRadiusPreset(val as any);
+            }}
+            size="sm"
+            style={{ width: "100%", margin: 0 }}
+            ariaLabel="Скругление углов"
+          />
 
           {cornerRadiusPreset === "custom" && (
             <input
@@ -578,18 +479,11 @@ export const SettingsScreen: React.FC = () => {
             <div className="settings-row-label">{t.reducedMotion || "Уменьшение движения"}</div>
             <div className="settings-row-desc">Отключить фоновые эффекты и анимации</div>
           </div>
-          <button
-            type="button"
-            className="sw"
-            role="switch"
-            aria-checked={reducedMotion}
-            onClick={() => {
-              if (hapticsEnabled) triggerHaptic("selection");
-              setReducedMotion(!reducedMotion);
-            }}
-          >
-            <i />
-          </button>
+          <LiquidGlassSwitch
+            checked={reducedMotion}
+            onChange={setReducedMotion}
+            ariaLabel={t.reducedMotion || "Уменьшение движения"}
+          />
         </div>
 
         <div className="settings-row">
@@ -597,18 +491,11 @@ export const SettingsScreen: React.FC = () => {
             <div className="settings-row-label">{t.haptics || "Вибрация"}</div>
             <div className="settings-row-desc">Тактильный отклик при нажатии кнопок</div>
           </div>
-          <button
-            type="button"
-            className="sw"
-            role="switch"
-            aria-checked={hapticsEnabled}
-            onClick={() => {
-              if (hapticsEnabled) triggerHaptic("selection");
-              setHapticsEnabled(!hapticsEnabled);
-            }}
-          >
-            <i />
-          </button>
+          <LiquidGlassSwitch
+            checked={hapticsEnabled}
+            onChange={setHapticsEnabled}
+            ariaLabel={t.haptics || "Вибрация"}
+          />
         </div>
       </div>
 
@@ -761,18 +648,11 @@ export const SettingsScreen: React.FC = () => {
             <div className="settings-row-label">Микро-шум (Noise Texture)</div>
             <div className="settings-row-desc">Тактильная фактура стекла</div>
           </div>
-          <button
-            type="button"
-            className="sw"
-            role="switch"
-            aria-checked={liquidGlass.noise}
-            onClick={() => {
-              if (hapticsEnabled) triggerHaptic("selection");
-              updateLiquidGlass({ noise: !liquidGlass.noise });
-            }}
-          >
-            <i />
-          </button>
+          <LiquidGlassSwitch
+            checked={liquidGlass.noise}
+            onChange={(v) => updateLiquidGlass({ noise: v })}
+            ariaLabel="Микро-шум"
+          />
         </div>
       </div>
 
@@ -874,23 +754,17 @@ export const SettingsScreen: React.FC = () => {
             <div className="settings-row-label">Энергосбережение</div>
             <div className="settings-row-desc">Отключение размытия и тяжелых переходов</div>
           </div>
-          <button
-            type="button"
-            className="sw"
-            role="switch"
-            aria-checked={motionProfile?.batterySaver ?? false}
-            onClick={() => {
-              if (hapticsEnabled) triggerHaptic("selection");
-              const next = !(motionProfile?.batterySaver ?? false);
+          <LiquidGlassSwitch
+            checked={motionProfile?.batterySaver ?? false}
+            onChange={(next) => {
               if (next) {
                 applyPreset("Battery Saver");
               } else {
                 applyPreset("Apple-like");
               }
             }}
-          >
-            <i />
-          </button>
+            ariaLabel="Энергосбережение"
+          />
         </div>
 
         {/* 15 Animation Toggles with Advanced Tuning (§31 & §35) */}
@@ -938,20 +812,12 @@ export const SettingsScreen: React.FC = () => {
                         {setting.duration}ms • {setting.curve} • {setting.intensity}%
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      className="sw"
-                      role="switch"
-                      aria-checked={setting.enabled}
-                      aria-label={label}
-                      style={{ transform: "scale(.82)", transformOrigin: "right center" }}
-                      onClick={() => {
-                        if (hapticsEnabled) triggerHaptic("selection");
-                        updateAnimSetting(key, { enabled: !setting.enabled });
-                      }}
-                    >
-                      <i />
-                    </button>
+                    <LiquidGlassSwitch
+                      size="sm"
+                      checked={setting.enabled}
+                      onChange={(checked) => updateAnimSetting(key, { enabled: checked })}
+                      ariaLabel={label}
+                    />
                   </div>
 
                   {/* Sub-controls: Duration, Curve, Live Preview */}
@@ -1030,18 +896,11 @@ export const SettingsScreen: React.FC = () => {
             <div className="settings-row-label">AI Помощник включен</div>
             <div className="settings-row-desc">Включение вкладки AI и контекстных подсказок</div>
           </div>
-          <button
-            type="button"
-            className="sw"
-            role="switch"
-            aria-checked={aiEnabled}
-            onClick={() => {
-              if (hapticsEnabled) triggerHaptic("selection");
-              setAiEnabled(!aiEnabled);
-            }}
-          >
-            <i />
-          </button>
+          <LiquidGlassSwitch
+            checked={aiEnabled}
+            onChange={setAiEnabled}
+            ariaLabel="AI Помощник включен"
+          />
         </div>
 
         <div className="settings-row">
@@ -1049,18 +908,11 @@ export const SettingsScreen: React.FC = () => {
             <div className="settings-row-label">Правило цен без единиц (Bare Number)</div>
             <div className="settings-row-desc">«bodring 10» → 10,000 сум (число без ед. = цена в тысячах)</div>
           </div>
-          <button
-            type="button"
-            className="sw"
-            role="switch"
-            aria-checked={priceInference}
-            onClick={() => {
-              if (hapticsEnabled) triggerHaptic("selection");
-              setPriceInference(!priceInference);
-            }}
-          >
-            <i />
-          </button>
+          <LiquidGlassSwitch
+            checked={priceInference}
+            onChange={setPriceInference}
+            ariaLabel="Правило цен без единиц (Bare Number)"
+          />
         </div>
 
         <div className="settings-row">
@@ -1068,18 +920,11 @@ export const SettingsScreen: React.FC = () => {
             <div className="settings-row-label">Распознавание количества с единицами</div>
             <div className="settings-row-desc">«pomidor 2kg» → 2 кг, «10 dona» → 10 шт</div>
           </div>
-          <button
-            type="button"
-            className="sw"
-            role="switch"
-            aria-checked={quantityInference}
-            onClick={() => {
-              if (hapticsEnabled) triggerHaptic("selection");
-              setQuantityInference(!quantityInference);
-            }}
-          >
-            <i />
-          </button>
+          <LiquidGlassSwitch
+            checked={quantityInference}
+            onChange={setQuantityInference}
+            ariaLabel="Распознавание количества с единицами"
+          />
         </div>
 
         <div className="settings-row">
@@ -1087,18 +932,11 @@ export const SettingsScreen: React.FC = () => {
             <div className="settings-row-label">{t.autoCategory || "Автоопределение категории"}</div>
             <div className="settings-row-desc">Определение категории при вводе названия</div>
           </div>
-          <button
-            type="button"
-            className="sw"
-            role="switch"
-            aria-checked={autoCategory}
-            onClick={() => {
-              if (hapticsEnabled) triggerHaptic("selection");
-              setAutoCategory(!autoCategory);
-            }}
-          >
-            <i />
-          </button>
+          <LiquidGlassSwitch
+            checked={autoCategory}
+            onChange={setAutoCategory}
+            ariaLabel={t.autoCategory || "Автоопределение категории"}
+          />
         </div>
 
         <div className="settings-row">
@@ -1227,7 +1065,7 @@ export const SettingsScreen: React.FC = () => {
               localStorage.removeItem("mating_motion_profile");
               resetMotionProfile();
               if (hapticsEnabled) triggerHaptic("medium");
-              alert("Кэш настроек UI сброшен");
+              showToast("Кэш настроек UI сброшен");
             }}
           >
             Сброс
