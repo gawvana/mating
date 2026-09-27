@@ -144,3 +144,63 @@
    - **Исправление:** Функция `loadMotionProfile()` теперь выполняет глубокий безопасный мердж каждого из 15 параметров с `DEFAULT_MOTION_PROFILE`, а все компоненты используют optional chaining (`?.`). Добавлен вывод стека ошибки в `ErrorBoundary` и кнопка сброса кэша UI.
 3. **Совместимость с мобильными браузерами:**
    - Touch-action `pan-y` на свайп-элементах гарантирует, что вертикальный скролл страницы не блокируется горизонтальными жестами.
+
+---
+
+## Часть 4 — Liquid Glass v2 (Apple Parity Pass & Calibrated Design System)
+
+**Дата реализации:** 2026-09-27  
+**Статус:** 100% PASS (Zero regressions, 47/47 pytest pass, clean Vite production build)
+
+### 4.1 Единая система SF Symbols иконок (`frontend/src/components/Icons.tsx`)
+- **Полная ликвидация инлайн-SVG и сырых эмодзи:** Создана библиотека из 26 канонических иконок в стиле Apple SF Symbols.
+- **Стандарты отрисовки:**
+  - ViewBox: `0 0 24 24`.
+  - Толщина штриха: `strokeWidth: 1.85px - 2.2px` с `strokeLinecap="round"` и `strokeLinejoin="round"`.
+  - Цветовая адаптация: Наследование темы через `currentColor`.
+  - Состояния: Поддержка `filled: boolean` для нативного поведения TabBar (Outline в неактивном состоянии, Filled при выборе).
+- **Интеграция по всем компонентам:**
+  - `BottomDock.tsx`: FAB морфинг (`IconPlus` ↔ `IconClose`), 5 вкладок таббара (`IconList`, `IconAI`, `IconHistory`, `IconStats`, `IconSettings`).
+  - `NavBar.tsx`: Переключатель темы оформления (`IconSun`, `IconMoon`).
+  - `QuickAddBar.tsx`: Кнопка добавления (`IconArrowUp`).
+  - `SwipeableItem.tsx`: Иконки свайпа (`IconCheck`, `IconUndo`, `IconTrash`).
+  - `AddSheet.tsx`: Кнопка закрытия (`IconClose`), шеврон раскрытия аккордеона (`IconChevron`), чекбоксы (`IconCheck`).
+  - `ListScreen.tsx`: Контекстное меню (`IconEdit`, `IconUndo`, `IconCheck`, `IconTrash`), pull-to-refresh (`IconRefresh`), строка поиска (`IconSearch`), пустой список (`IconCart`), умная сортировка (`IconSort`), поделиться (`IconShare`), скролл наверх (`IconChevron`).
+  - `AIScreen.tsx`: Категории рецептов (`IconRecipePot`, `IconRecipePan`, `IconRecipeSoup`, `IconRecipeBottle`), чекбоксы (`IconCheck`).
+  - `HistoryScreen.tsx`: Повторить покупку (`IconRefresh`), добавить из истории (`IconPlus`), пустая история (`IconScroll`).
+  - `SettingsScreen.tsx`: Раскрытие аккордеона расширенных настроек (`IconChevron`).
+
+### 4.2 Telegram Bot Premium Custom Emojis (`backend/bot/`)
+- **Инлайн-клавиатуры (`backend/bot/keyboards.py`):**
+  - Поддержка нативного параметра `icon_custom_emoji_id` в `InlineKeyboardButton` aiogram 3.x.
+  - Карта 23 канонических идентификаторов эмодзи (`OPEN_APP`, `ADD`, `VOICE`, `RECIPES`, `SHARE`, `STATS`, `SETTINGS`, `PURCHASED`, `RESTORE`, `CHECK`, `DELETE` и др.).
+  - Текстовые метки очищены от юникод-символов (например, `"Открыть Mating"` вместо `"📱 Открыть Mating"`).
+- **HTML-сообщения (`backend/bot/bot.py`):**
+  - Форматирование через тег `<tg-emoji emoji-id="...">` с функцией `em(name)`.
+- **Тесты:** 100% успешное прохождение всех 47 тестов в `pytest backend/tests/` (включая `test_bot_webhook.py`).
+
+### 4.3 Калиброванные пружины Apple Spring Physics
+- **Физические константы:**
+  - Stiffness (жесткость): `~340`
+  - Damping (демпфирование): `~28`
+  - CSS-функция: `@supports (transition-timing-function: linear(...))` с аппроксимацией Apple Spring curve и фолбэком `cubic-bezier(0.28, 1.25, 0.45, 1)`.
+- **Тактильный отклик (Apple Tactile Compression):**
+  - При нажатии на интерактивные стеклянные контролы (`.glass-btn`, `.btn.press`, `.glass-seg-btn`, `.glass-chip`, `.action-chip`, `.quick-submit-btn`, `.nav-icon`): `transform: scale(0.965) translateZ(0)` с мгновенным понижением яркости `filter: brightness(0.93)` за 90мс.
+- **Асимптотическое резиновое сопротивление (Rubber Banding):**
+  - Формула: `-((over * 35) / (over + 35))` при вытягивании шторки и свайпах за пределы лимита.
+- **Шторка добавления (`AddSheet.tsx`):**
+  - При свайпе ниже порога отпускания шторка возвращается в состояние покоя с калиброванной пружиной `transform 320ms var(--spring)`.
+  - При превышении порога закрывается с физической скоростью `260ms var(--sheet)`.
+- **Капсула Undo Toast (`UndoToast.tsx`):**
+  - Стиль Apple Dynamic Island / Capsule: `backdrop-filter: blur(24px) saturate(180%)`, адаптивная заливка `color-mix(in srgb, var(--bg) 84%, transparent)`.
+  - Стейт-машина выхода: флаг `isExiting` с анимацией `transform 0.28s cubic-bezier(0.32, 0, 0.67, 0), opacity 0.24s` перед вызовом `onDismiss`.
+- **Каскадный вход элементов (`itemEntrance`):**
+  - Задержка появления строк списка `calc(var(--item-idx, 0) * 35ms)` для создания эффекта последовательного раскрытия контента без фризов.
+
+### 4.4 Оптимизация композитинга и 60/120 FPS
+- **Устранение вложенных backdrop-filter:**
+  - Внутри шторки `.sheet` дочерние стеклянные контролы (`.glass-btn`, `.glass-seg-track`, `.glass-chip`, `.glass-input`, `.glass`) имеют `backdrop-filter: none !important`.
+  - Это устраняет двойной проход размытия на GPU и исключает дропы кадров при раскрытии шторки.
+- **Автоматическая адаптация (Performance Tiers):**
+  - Профили `FULL`, `ADAPTIVE`, `REDUCED`, `MINIMAL` с автоматическим снижением нагрузки на слабых устройствах и в режиме энергосбережения.
+

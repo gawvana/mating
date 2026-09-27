@@ -116,7 +116,7 @@ async def handle_start(message: Message):
         )
 
     greeting = (
-        f"<b>Mating 👋</b>\n\n"
+        f"<b>Mating</b> {em('celebrate', '👋')}\n\n"
         f"Привет, {from_user.first_name or 'друг'}! Я твой умный AI-помощник для покупок.\n\n"
         f"• Напиши мне список сообщением (например: <i>«молоко 2л, хлеб, помидоры 10»</i>)\n"
         f"• Или запусти Mini App для быстрого и наглядного управления:"
@@ -224,7 +224,7 @@ async def handle_help_command(message: Message):
 async def handle_ai_command(message: Message):
     """Handle /ai command."""
     text = (
-        f"🤖 <b>AI Ассистент Mating</b>\n\n"
+        f"{em('bot', '🤖')} <b>AI Ассистент Mating</b>\n\n"
         f"Я умею понимать естественный язык, узбекский и русский, опечатки и числа:\n\n"
         f"• <i>«молоко 2л, картошка 3кг, сыр 300г»</i> — распознает единицы и количество\n"
         f"• <i>«pomidor 10 bodring 10»</i> — число без единицы считается ценой (10 000 сум)\n"
@@ -253,7 +253,7 @@ async def handle_history_command(message: Message):
         stats = await service.get_monthly_stats(user.id)
 
     text = (
-        f"📅 <b>История покупок</b>\n\n"
+        f"{em('calendar', '📅')} <b>История покупок</b>\n\n"
         f"Куплено в этом месяце: <b>{stats.items_purchased_count}</b> товаров\n"
         f"Потрачено: <b>{stats.total_spent:,.0f} {stats.currency_code}</b>\n\n"
         f"Для детальной истории по датам и быстрого повтора покупок откройте Mini App:"
@@ -270,7 +270,7 @@ async def handle_share_command(message: Message):
 
     share_url = f"{settings.WEBAPP_URL}/#share" if settings.WEBAPP_URL else "https://mating.vercel.app/#share"
     text = (
-        f"🔗 <b>Поделиться списком покупок</b>\n\n"
+        f"{em('link', '🔗')} <b>Поделиться списком покупок</b>\n\n"
         f"Вы можете поделиться своим списком покупок через безопасную ссылку-снимок:\n"
         f"• Ссылка доступна только для чтения\n"
         f"• Личные данные пользователя не раскрываются\n\n"
@@ -343,7 +343,7 @@ async def handle_natural_text(message: Message):
                 if user:
                     service = ItemService(session)
                     cleared = await service.clear_purchased(user.id)
-                    await message.answer(f"🗑 Очищено <b>{cleared}</b> купленных товаров.", reply_markup=back_keyboard())
+                    await message.answer(f"{em('delete', '🗑')} Очищено <b>{cleared}</b> купленных товаров.", reply_markup=back_keyboard())
                     return
 
     # Intent 3: Delete Item ("удали хлеб", "убери молоко")
@@ -363,12 +363,12 @@ async def handle_natural_text(message: Message):
                     if found:
                         await service.soft_delete(user.id, found.id)
                         await message.answer(
-                            f"🗑 Товар <b>{found.name}</b> удален из списка.\nНапишите <i>«верни {found.name}»</i>, чтобы восстановить.",
+                            f"{em('delete', '🗑')} Товар <b>{found.name}</b> удален из списка.\nНапишите <i>«верни {found.name}»</i>, чтобы восстановить.",
                             reply_markup=back_keyboard(),
                         )
                         return
                     else:
-                        await message.answer(f"ℹ️ Товар «{target}» не найден в активном списке.", reply_markup=back_keyboard())
+                        await message.answer(f"{em('info', 'ℹ️')} Товар «{target}» не найден в активном списке.", reply_markup=back_keyboard())
                         return
 
     # Intent 4: Restore Item ("верни молоко", "восстанови хлеб")
@@ -392,10 +392,10 @@ async def handle_natural_text(message: Message):
                     found = next((i for i in deleted_items if i.name.lower() == target or target in i.name.lower()), None)
                     if found:
                         await service.restore_item(user.id, found.id)
-                        await message.answer(f"✅ Товар <b>{found.name}</b> возвращен в список!", reply_markup=back_keyboard())
+                        await message.answer(f"{em('check', '✅')} Товар <b>{found.name}</b> возвращен в список!", reply_markup=back_keyboard())
                         return
                     else:
-                        await message.answer(f"ℹ️ Удаленный товар «{target}» не найден.", reply_markup=back_keyboard())
+                        await message.answer(f"{em('info', 'ℹ️')} Удаленный товар «{target}» не найден.", reply_markup=back_keyboard())
                         return
 
     # Intent 5: Buy / Purchased Item ("купи хлеб", "купил хлеб", "отметь молоко купленным")
@@ -414,7 +414,7 @@ async def handle_natural_text(message: Message):
                     found = next((i for i in items if not i.is_purchased and (i.name.lower() == target or target in i.name.lower())), None)
                     if found:
                         await service.toggle_purchased(user.id, found.id, expected_version=found.version)
-                        await message.answer(f"✅ <s>{found.name}</s> отмечен как купленный!", reply_markup=back_keyboard())
+                        await message.answer(f"{em('check', '✅')} <s>{found.name}</s> отмечен как купленный!", reply_markup=back_keyboard())
                         return
 
     # Clean leading "добавь ..." keywords before passing to item parser

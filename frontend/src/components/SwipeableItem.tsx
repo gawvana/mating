@@ -216,18 +216,47 @@ export const SwipeableItem: React.FC<SwipeableItemProps> = React.memo(({
     <div className={`swipe-wrapper ${isExiting ? "exiting" : ""}`}>
       {/* Right swipe background (Buy/Restore) */}
       <div className="swipe-bg swipe-bg-right" ref={bgRightRef} style={{ opacity: 0 }}>
-        <svg className="swipe-bg-icon" ref={iconRightRef} viewBox="0 0 24 24" aria-hidden="true" style={{ opacity: 0 }}>
-          {onSwipedRight
-            ? <path d="M3 12h18M12 3l9 9-9 9" />   /* restore arrow */
-            : <path d="M20 6L9 17l-5-5" />          /* checkmark */
-          }
+        <svg
+          className="swipe-bg-icon"
+          ref={iconRightRef}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2.2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          style={{ opacity: 0 }}
+        >
+          {onSwipedRight ? (
+            <>
+              <path d="M3 10h11a5 5 0 0 1 0 10h-2" />
+              <path d="M7 6L3 10l4 4" />
+            </>
+          ) : (
+            <path d="M4.5 12.5L9.5 17.5L19.5 6.5" />
+          )}
         </svg>
       </div>
 
       {/* Left swipe background (Delete) */}
       <div className="swipe-bg swipe-bg-left" ref={bgLeftRef} style={{ opacity: 0 }}>
-        <svg className="swipe-bg-icon" ref={iconLeftRef} viewBox="0 0 24 24" aria-hidden="true" style={{ opacity: 0 }}>
-          <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
+        <svg
+          className="swipe-bg-icon"
+          ref={iconLeftRef}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.9}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          style={{ opacity: 0 }}
+        >
+          <path d="M4 6.5h16" />
+          <path d="M9 4h6a1 1 0 0 1 1 1v1.5H8V5a1 1 0 0 1 1-1z" />
+          <path d="M6.5 6.5l1 13a2 2 0 0 0 2 1.5h5a2 2 0 0 0 2-1.5l1-13" />
+          <path d="M10 11v6M14 11v6" />
         </svg>
       </div>
 

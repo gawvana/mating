@@ -20,6 +20,7 @@ import { triggerHaptic } from "../telegram/telegram";
 import { LiquidGlassSwitch } from "../components/LiquidGlassSwitch";
 import { LiquidGlassSegment } from "../components/LiquidGlassSegment";
 import { LiquidGlassButton } from "../components/LiquidGlassButton";
+import { IconChevron } from "../components/Icons";
 
 const LANGUAGE_OPTIONS = [
   { value: "ru", label: "RU" },
@@ -780,7 +781,7 @@ export const SettingsScreen: React.FC = () => {
             aria-expanded={animListOpen}
           >
             <span>Настройки 15 анимаций (детально)</span>
-            <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" /></svg>
+            <IconChevron size={18} direction={animListOpen ? "up" : "down"} />
           </button>
 
           <div className={`anim-list-body ${animListOpen ? "open" : ""}`}>

@@ -8,6 +8,19 @@ import { triggerHaptic } from "../telegram/telegram";
 import { ShoppingItem } from "../types";
 import { SwipeableItem } from "../components/SwipeableItem";
 import { LiquidGlassButton } from "../components/LiquidGlassButton";
+import {
+  IconCart,
+  IconCheck,
+  IconChevron,
+  IconClose,
+  IconEdit,
+  IconRefresh,
+  IconSearch,
+  IconShare,
+  IconSort,
+  IconTrash,
+  IconUndo,
+} from "../components/Icons";
 import { detectCategory } from "../utils/localParser";
 
 const ALL_CATEGORY = "Все";
@@ -107,19 +120,15 @@ const CtxMenu: React.FC<CtxMenuProps> = React.memo(({ item, top, left, onEdit, o
         style={{ position: "fixed", top: safeTop, left: safeLeft, zIndex: 30 }}
       >
         <button className="ctx-menu-item" role="menuitem" onClick={() => { onEdit(); onClose(); }}>
-          <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+          <IconEdit size={16} />
           Изменить
         </button>
         <button className="ctx-menu-item" role="menuitem" onClick={() => { onToggle(); onClose(); }}>
-          <svg viewBox="0 0 24 24">
-            {item.is_purchased
-              ? <path d="M3 12h18M12 3l9 9-9 9" />
-              : <path d="M20 6L9 17l-5-5" />}
-          </svg>
+          {item.is_purchased ? <IconUndo size={16} /> : <IconCheck size={16} />}
           {item.is_purchased ? "Вернуть" : "Купить"}
         </button>
         <button className="ctx-menu-item danger" role="menuitem" onClick={() => { onDelete(); onClose(); }}>
-          <svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
+          <IconTrash size={16} />
           Удалить
         </button>
       </div>
@@ -143,6 +152,7 @@ interface ItemRowProps {
   longPressEnabled?: boolean;
   longPressDuration?: number;
   isExiting?: boolean;
+  index?: number;
 }
 
 const ItemRow: React.FC<ItemRowProps> = React.memo(({
@@ -159,6 +169,7 @@ const ItemRow: React.FC<ItemRowProps> = React.memo(({
   longPressEnabled = true,
   longPressDuration = 480,
   isExiting = false,
+  index = 0,
 }) => {
   const t = translations[language as keyof typeof translations] || translations.ru;
   const rowRef = useRef<HTMLDivElement>(null);
@@ -241,6 +252,7 @@ const ItemRow: React.FC<ItemRowProps> = React.memo(({
     <div
       ref={rowRef}
       className={`item-row reveal-item ${item.is_purchased ? "purchased" : ""} ${isPurchasing ? "purchasing" : ""} ${isExiting ? "exiting" : ""} ${pressStage !== "idle" ? pressStage : ""}`}
+      style={{ "--item-idx": Math.min(index, 12) } as React.CSSProperties}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -257,11 +269,7 @@ const ItemRow: React.FC<ItemRowProps> = React.memo(({
         onClick={handleToggleClick}
         aria-label={item.is_purchased ? "Вернуть в список" : "Отметить купленным"}
       >
-        {item.is_purchased && (
-          <svg viewBox="0 0 24 24">
-            <path d="M20 6L9 17l-5-5" />
-          </svg>
-        )}
+        {item.is_purchased && <IconCheck size={14} strokeWidth={2.4} />}
       </button>
 
       {/* Item details — accessible edit trigger on click/Enter */}
@@ -352,9 +360,7 @@ const ItemRow: React.FC<ItemRowProps> = React.memo(({
         }}
         aria-label={t.delete || "Удалить"}
       >
-        <svg viewBox="0 0 24 24" style={{ width: 16, height: 16 }}>
-          <path d="M18 6L6 18M6 6l12 12" />
-        </svg>
+        <IconClose size={15} strokeWidth={2} />
       </button>
     </div>
   );
@@ -929,9 +935,7 @@ export const ListScreen: React.FC = () => {
         }}
       >
         <div className={`ptr-spinner ${isRefreshing ? "refreshing" : ""}`}>
-          <svg viewBox="0 0 24 24" style={{ width: 20, height: 20 }}>
-            <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-          </svg>
+          <IconRefresh size={20} />
         </div>
       </div>
 
@@ -987,10 +991,7 @@ export const ListScreen: React.FC = () => {
             }}
             aria-label="Поиск"
           >
-            <svg viewBox="0 0 24 24" style={{ width: 15, height: 15 }}>
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
+            <IconSearch size={15} />
           </button>
           {isSearchOpen && (
             <input
@@ -1057,11 +1058,7 @@ export const ListScreen: React.FC = () => {
       {!isLoading && items.length === 0 && !isError && (
         <div className="empty-state">
           <div className="empty-state-icon">
-            <svg viewBox="0 0 24 24" style={{ width: 28, height: 28 }}>
-              <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <path d="M16 10a4 4 0 0 1-8 0" />
-            </svg>
+            <IconCart size={32} />
           </div>
           <h3>{t.emptyTitle}</h3>
           <p>{t.emptySubtitle}</p>
@@ -1100,9 +1097,7 @@ export const ListScreen: React.FC = () => {
       {!isLoading && items.length > 0 && (
         <div className="smart-sort-bar">
           <div className="smart-sort-select-wrap glass">
-            <svg viewBox="0 0 24 24" className="smart-sort-icon">
-              <path d="M3 6h18M6 12h12M9 18h6" />
-            </svg>
+            <IconSort size={18} className="smart-sort-icon" />
             <select
               className="smart-sort-select"
               value={smartSortMode}
@@ -1140,13 +1135,7 @@ export const ListScreen: React.FC = () => {
             disabled={isSharing || activeItems.length === 0}
             title="Поделиться списком"
           >
-            <svg viewBox="0 0 24 24" style={{ width: 15, height: 15 }}>
-              <circle cx="18" cy="5" r="3" />
-              <circle cx="6" cy="12" r="3" />
-              <circle cx="18" cy="19" r="3" />
-              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-            </svg>
+            <IconShare size={15} />
             <span>{isSharing ? "..." : language === "uz" ? "Ulashish" : "Поделиться"}</span>
           </button>
         </div>
@@ -1158,7 +1147,7 @@ export const ListScreen: React.FC = () => {
           groupedSections.map(([catName, catItems]) => (
             <div key={catName} className="category-section" style={{ marginTop: 12 }}>
               <div className="section-sticky-header">{catName} ({catItems.length})</div>
-              {catItems.map((item) => (
+              {catItems.map((item, itemIdx) => (
                 <SwipeableItem
                   key={item.id}
                   item={item}
@@ -1170,6 +1159,7 @@ export const ListScreen: React.FC = () => {
                 >
                   <ItemRow
                     item={item}
+                    index={itemIdx}
                     language={language}
                     onToggle={handleToggle}
                     onDelete={handleDelete}
@@ -1188,7 +1178,7 @@ export const ListScreen: React.FC = () => {
             </div>
           ))
         ) : (
-          sortedActive.map((item) => (
+          sortedActive.map((item, idx) => (
             <SwipeableItem
               key={item.id}
               item={item}
@@ -1200,6 +1190,7 @@ export const ListScreen: React.FC = () => {
             >
               <ItemRow
                 item={item}
+                index={idx}
                 language={language}
                 onToggle={handleToggle}
                 onDelete={handleDelete}
@@ -1243,17 +1234,7 @@ export const ListScreen: React.FC = () => {
               <span>
                 {(t.summaryPurchased || "{count} куплено").replace("{count}", "").trim()} ({filteredPurchased.length})
               </span>
-              <svg
-                viewBox="0 0 24 24"
-                style={{
-                  width: 16,
-                  height: 16,
-                  transform: purchasedOpen ? "rotate(180deg)" : "rotate(0deg)",
-                  transition: "transform .3s var(--spring)",
-                }}
-              >
-                <path d="M6 9l6 6 6-6" />
-              </svg>
+              <IconChevron size={16} direction={purchasedOpen ? "up" : "down"} />
             </div>
 
             <button
@@ -1270,7 +1251,7 @@ export const ListScreen: React.FC = () => {
           </div>
 
           {purchasedOpen &&
-            filteredPurchased.map((item) => (
+            filteredPurchased.map((item, idx) => (
               <SwipeableItem
                 key={item.id}
                 item={item}
@@ -1283,6 +1264,7 @@ export const ListScreen: React.FC = () => {
               >
                 <ItemRow
                   item={item}
+                  index={idx}
                   language={language}
                   onToggle={handleToggle}
                   onDelete={handleDelete}
@@ -1325,9 +1307,7 @@ export const ListScreen: React.FC = () => {
             window.scrollTo({ top: 0, behavior: "smooth" });
           }}
         >
-          <svg viewBox="0 0 24 24" style={{ width: 20, height: 20 }}>
-            <path d="M18 15l-6-6-6 6" />
-          </svg>
+          <IconChevron size={20} direction="up" />
         </button>
       )}
 

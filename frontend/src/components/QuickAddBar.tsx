@@ -7,6 +7,7 @@ import { useAppStore } from "../state/useAppStore";
 import { triggerHaptic } from "../telegram/telegram";
 import { ShoppingItem } from "../types";
 import { detectCategory, parseShoppingTextDeterministically } from "../utils/localParser";
+import { IconArrowUp } from "./Icons";
 
 export const QuickAddBar: React.FC = () => {
   const queryClient = useQueryClient();
@@ -264,9 +265,7 @@ export const QuickAddBar: React.FC = () => {
               disabled={!text.trim()}
               aria-label={t.addBtn}
             >
-              <svg viewBox="0 0 24 24" className="quick-add-icon">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
+              <IconArrowUp size={18} className="quick-add-icon" />
             </button>
           </div>
         </form>

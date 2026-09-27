@@ -9,6 +9,7 @@ import { AIParsedItem, ShoppingItem } from "../types";
 import { calculateTotals, detectCategory, parseShoppingTextDeterministically } from "../utils/localParser";
 import { LiquidGlassSegment } from "./LiquidGlassSegment";
 import { LiquidGlassButton, LiquidGlassChip } from "./LiquidGlassButton";
+import { IconCheck, IconChevron, IconClose } from "./Icons";
 
 const UNITS = ["шт", "кг", "г", "л", "мл", "упак"];
 
@@ -674,27 +675,71 @@ export const AddSheet: React.FC = () => {
     const app = appElementRef.current;
     const scrim = scrimRef.current;
 
-    if (sheet) {
-      sheet.style.willChange = "";
-      sheet.style.transition = "";
-      sheet.style.transform = "";
-    }
-    if (app) {
-      app.style.transition = "";
-      app.style.transform = "";
-    }
-    if (scrim) {
-      scrim.style.transition = "";
-      scrim.style.opacity = "";
-    }
-
     try {
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     } catch {}
 
-    // Dismiss threshold
-    if (dy > 120 || (dy > 50 && vy > 0.5)) {
-      closeSheet();
+    // Dismiss threshold: dragged >120px down or flicked with velocity
+    const shouldDismiss = dy > 120 || (dy > 50 && vy > 0.5);
+
+    if (shouldDismiss) {
+      if (sheet) {
+        sheet.style.transition = "transform 260ms var(--sheet), opacity 200ms ease";
+        sheet.style.transform = "translate(-50%, 104%)";
+      }
+      if (app) {
+        app.style.transition = "transform 260ms var(--sheet), border-radius 260ms var(--sheet)";
+        app.style.transform = "";
+      }
+      if (scrim) {
+        scrim.style.transition = "opacity 260ms ease";
+        scrim.style.opacity = "0";
+      }
+      setTimeout(() => {
+        closeSheet();
+        if (sheet) {
+          sheet.style.willChange = "";
+          sheet.style.transition = "";
+          sheet.style.transform = "";
+        }
+        if (app) {
+          app.style.transition = "";
+          app.style.transform = "";
+        }
+        if (scrim) {
+          scrim.style.transition = "";
+          scrim.style.opacity = "";
+        }
+      }, 260);
+    } else {
+      // Rebound with calibrated Apple spring
+      if (sheet) {
+        sheet.style.transition = "transform 320ms var(--spring)";
+        sheet.style.transform = "translate(-50%, 0)";
+      }
+      if (app) {
+        app.style.transition = "transform 320ms var(--spring), border-radius 320ms var(--spring)";
+        app.style.transform = "scale(0.96) translateY(10px)";
+      }
+      if (scrim) {
+        scrim.style.transition = "opacity 320ms ease";
+        scrim.style.opacity = "0.45";
+      }
+      setTimeout(() => {
+        if (sheet) {
+          sheet.style.willChange = "";
+          sheet.style.transition = "";
+          sheet.style.transform = "";
+        }
+        if (app) {
+          app.style.transition = "";
+          app.style.transform = "";
+        }
+        if (scrim) {
+          scrim.style.transition = "";
+          scrim.style.opacity = "";
+        }
+      }, 330);
     }
   };
 
@@ -753,11 +798,10 @@ export const AddSheet: React.FC = () => {
               justifyContent: "center",
               cursor: "pointer",
               color: "var(--muted)",
-              fontSize: 14,
             }}
             aria-label="Закрыть"
           >
-            ✕
+            <IconClose size={14} />
           </button>
         </div>
 
@@ -868,13 +912,7 @@ export const AddSheet: React.FC = () => {
                 aria-expanded={showDetails}
               >
                 <span>{showDetails ? "Скрыть подробности" : "Подробнее (цена, категория)"}</span>
-                <svg
-                  viewBox="0 0 24 24"
-                  className={`details-chevron ${showDetails ? "is-open" : ""}`}
-                  aria-hidden="true"
-                >
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
+                <IconChevron size={18} className={`details-chevron ${showDetails ? "is-open" : ""}`} />
               </button>
 
               <div className={`details-accordion ${showDetails ? "is-expanded" : ""}`}>
@@ -1048,11 +1086,7 @@ export const AddSheet: React.FC = () => {
                           className={`preview-checkbox ${isSelected ? "checked" : ""}`}
                           aria-hidden="true"
                         >
-                          {isSelected && (
-                            <svg viewBox="0 0 24 24">
-                              <path d="M20 6L9 17l-5-5" />
-                            </svg>
-                          )}
+                          {isSelected && <IconCheck size={13} strokeWidth={2.4} />}
                         </div>
 
                         <div className="preview-item-info">
@@ -1079,12 +1113,14 @@ export const AddSheet: React.FC = () => {
                             background: "transparent",
                             border: "none",
                             color: "var(--muted)",
-                            fontSize: 14,
                             cursor: "pointer",
                             padding: "4px 8px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
                           }}
                         >
-                          ✕
+                          <IconClose size={14} />
                         </button>
                       </div>
                     );

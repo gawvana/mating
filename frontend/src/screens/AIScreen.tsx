@@ -7,12 +7,19 @@ import { triggerHaptic } from "../telegram/telegram";
 import { ShoppingItem } from "../types";
 import { detectCategory, parseShoppingTextDeterministically } from "../utils/localParser";
 import { LiquidGlassButton } from "../components/LiquidGlassButton";
+import {
+  IconCheck,
+  IconRecipeBottle,
+  IconRecipePan,
+  IconRecipePot,
+  IconRecipeSoup,
+} from "../components/Icons";
 
 interface RecipeTemplate {
   id: string;
   title: string;
   uzTitle: string;
-  icon: string;
+  iconKey: "pot" | "pan" | "soup" | "bottle";
   items: Array<{ name: string; quantity: number; unit: string; category: string; price: number | null }>;
 }
 
@@ -21,7 +28,7 @@ const RECIPES: RecipeTemplate[] = [
     id: "plov",
     title: "Плов",
     uzTitle: "Osh / Palov",
-    icon: "🥘",
+    iconKey: "pot",
     items: [
       { name: "Рис лазер", quantity: 1, unit: "кг", category: "Бакалея", price: 24000 },
       { name: "Говядина мякоть", quantity: 1, unit: "кг", category: "Мясо и рыба", price: 95000 },
@@ -36,7 +43,7 @@ const RECIPES: RecipeTemplate[] = [
     id: "breakfast",
     title: "Завтрак",
     uzTitle: "Nonushta",
-    icon: "🍳",
+    iconKey: "pan",
     items: [
       { name: "Яйца", quantity: 10, unit: "шт", category: "Бакалея", price: 16000 },
       { name: "Молоко 3.2%", quantity: 1, unit: "л", category: "Молочные продукты", price: 12000 },
@@ -49,7 +56,7 @@ const RECIPES: RecipeTemplate[] = [
     id: "borscht",
     title: "Борщ",
     uzTitle: "Borsh",
-    icon: "🍲",
+    iconKey: "soup",
     items: [
       { name: "Свекла", quantity: 0.5, unit: "кг", category: "Овощи и фрукты", price: 4000 },
       { name: "Капуста белокочанная", quantity: 1, unit: "кг", category: "Овощи и фрукты", price: 5000 },
@@ -64,7 +71,7 @@ const RECIPES: RecipeTemplate[] = [
     id: "frequent",
     title: "Частые покупки",
     uzTitle: "Doimiy xaridlar",
-    icon: "🥛",
+    iconKey: "bottle",
     items: [
       { name: "Вода питьевая 5л", quantity: 1, unit: "шт", category: "Напитки", price: 8000 },
       { name: "Молоко", quantity: 1, unit: "л", category: "Молочные продукты", price: 12000 },
@@ -877,7 +884,12 @@ export const AIScreen: React.FC = () => {
                 className="ai-recipe-chip glass press"
                 onClick={() => handleSelectRecipe(r)}
               >
-                <span className="recipe-icon">{r.icon}</span>
+                <span className="recipe-icon">
+                  {r.id === "plov" && <IconRecipePot size={18} />}
+                  {r.id === "breakfast" && <IconRecipePan size={18} />}
+                  {r.id === "borscht" && <IconRecipeSoup size={18} />}
+                  {r.id === "frequent" && <IconRecipeBottle size={18} />}
+                </span>
                 <span className="recipe-name">
                   {language === "uz" ? r.uzTitle : r.title}
                 </span>
@@ -1022,9 +1034,7 @@ export const AIScreen: React.FC = () => {
                   }}
                 >
                   {item.selected && (
-                    <svg viewBox="0 0 24 24" style={{ width: 14, height: 14, stroke: "#ffffff", strokeWidth: 2.8, fill: "none" }}>
-                      <path d="M20 6L9 17l-5-5" />
-                    </svg>
+                    <IconCheck size={13} strokeWidth={2.6} style={{ stroke: "#ffffff" }} />
                   )}
                 </div>
 

@@ -1,9 +1,10 @@
-import React, { useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { translations } from "../i18n";
 import { UndoToastData, useAppStore } from "../state/useAppStore";
 import { triggerHaptic } from "../telegram/telegram";
+import { IconUndo } from "./Icons";
 
 export const UndoToastItem: React.FC<{
   toast: UndoToastData;
@@ -14,12 +15,21 @@ export const UndoToastItem: React.FC<{
   const hapticsEnabled = useAppStore((s) => s.hapticsEnabled);
   const t = translations[language];
 
+  const [isExiting, setIsExiting] = useState(false);
+
+  const handleDismiss = useCallback(() => {
+    setIsExiting(true);
+    setTimeout(() => {
+      onDismiss(toast.id);
+    }, 280);
+  }, [onDismiss, toast.id]);
+
   useEffect(() => {
     const timer = setTimeout(() => {
-      onDismiss(toast.id);
+      handleDismiss();
     }, 4500);
     return () => clearTimeout(timer);
-  }, [toast.id, onDismiss]);
+  }, [handleDismiss]);
 
   const restoreMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -29,7 +39,7 @@ export const UndoToastItem: React.FC<{
       if (hapticsEnabled) triggerHaptic("success");
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["stats"] });
-      onDismiss(toast.id);
+      handleDismiss();
     },
     onError: (err: any) => {
       if (hapticsEnabled) triggerHaptic("error");
@@ -38,17 +48,21 @@ export const UndoToastItem: React.FC<{
   });
 
   return (
-    <div className="undo-toast show" role="alert">
-      <span>
+    <div
+      className={`undo-toast glass ${isExiting ? "is-exiting" : "show"}`}
+      role="alert"
+    >
+      <span className="undo-toast-label">
         {t.deletedToast}: <b>{toast.name}</b>
       </span>
       <button
         type="button"
-        className="undo-toast-btn"
+        className="undo-toast-btn press"
         onClick={() => restoreMutation.mutate(toast.id)}
-        disabled={restoreMutation.isPending}
+        disabled={restoreMutation.isPending || isExiting}
       >
-        {restoreMutation.isPending ? "..." : t.undo}
+        <IconUndo size={15} />
+        <span>{restoreMutation.isPending ? "..." : t.undo}</span>
       </button>
     </div>
   );
@@ -59,11 +73,12 @@ export const UndoToast: React.FC = () => {
   const undoToast = useAppStore((s) => s.undoToast);
   const dismissUndoToast = useAppStore((s) => s.dismissUndoToast);
 
-  const activeList: UndoToastData[] = undoToasts && undoToasts.length > 0
-    ? undoToasts
-    : undoToast
-    ? [undoToast]
-    : [];
+  const activeList: UndoToastData[] =
+    undoToasts && undoToasts.length > 0
+      ? undoToasts
+      : undoToast
+      ? [undoToast]
+      : [];
 
   if (activeList.length === 0) return null;
 

@@ -92,16 +92,16 @@
   --e2: 0 8px 20px rgba(30,30,60,.14);
   --e3: 0 16px 40px rgba(30,30,60,.18);
 
-  /* Springs (cubic-bezier fallback) */
-  --spring: cubic-bezier(.34,1.3,.64,1);
-  --bounce: cubic-bezier(.3,1.6,.5,1);
-  --sheet: cubic-bezier(.32,.72,0,1);
-  --gentle: cubic-bezier(.25,1,.4,1);
+  /* Apple Springs (calibrated stiffness ~340, damping ~28) */
+  --spring: cubic-bezier(0.28, 1.25, 0.45, 1);
+  --bounce: cubic-bezier(0.25, 1.4, 0.5, 1);
+  --sheet: cubic-bezier(0.32, 1.12, 0.45, 1);
+  --gentle: cubic-bezier(0.25, 1, 0.4, 1);
 
   /* Configurable spring curves */
-  --spring-snappy: cubic-bezier(.34, 1.3, .64, 1);
-  --spring-balanced: cubic-bezier(.25, 1, .4, 1);
-  --spring-soft: cubic-bezier(.32, .72, 0, 1);
+  --spring-snappy: cubic-bezier(0.28, 1.25, 0.45, 1);
+  --spring-balanced: cubic-bezier(0.25, 1, 0.4, 1);
+  --spring-soft: cubic-bezier(0.32, 0.72, 0, 1);
   --spring-linear: linear;
 
   /* Motion Profile Variables */
@@ -132,11 +132,12 @@
   --dur-edit-morph: 280ms;
 }
 
-/* Linear spring physics where supported */
+/* Linear spring physics with Apple stiffness/damping interpolation */
 @supports (transition-timing-function: linear(0,1)) {
   :root {
-    --spring: linear(0,.05 2%,.25 6%,.6 12%,.9 19%,1.04 26%,1.06 31%,1.03 38%,.995 48%,.99 56%,1.004 70%,1);
-    --bounce: linear(0,.009,.035 2.1%,.141,.281 6.7%,.723 12.9%,.938 16.7%,1.017,1.077,1.121,1.149 24.3%,1.159,1.163,1.161,1.154 29.9%,1.129 32.8%,1.051 39.6%,1.017 43.1%,.991,.977 51%,.974 53.8%,.975 57.1%,.997 69.8%,1.003 76.9%,1.004 91.4%,1);
+    --spring: linear(0, 0.04 2%, 0.16 5%, 0.36 9%, 0.62 14%, 0.85 20%, 0.98 26%, 1.03 32%, 1.035 36%, 1.02 42%, 1.005 50%, 0.998 60%, 1.001 72%, 1);
+    --bounce: linear(0, 0.02 2%, 0.14 6%, 0.45 13%, 0.82 20%, 1.05 28%, 1.11 34%, 1.08 42%, 1.02 52%, 0.99 65%, 1.002 80%, 1);
+    --sheet: linear(0, 0.03 2%, 0.15 6%, 0.38 12%, 0.65 18%, 0.88 25%, 0.99 32%, 1.025 40%, 1.015 50%, 1.002 65%, 1);
     --spring-snappy: var(--spring);
   }
 }
@@ -1231,6 +1232,16 @@ html.refract .glass {
   transition-delay: 0s;
 }
 
+/* Eliminate nested backdrop-filter GPU thrashing inside bottom sheets */
+.sheet .glass-btn,
+.sheet .glass-seg-track,
+.sheet .glass-chip,
+.sheet .glass-input,
+.sheet .glass {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 .sheet-hd {
   cursor: grab;
   touch-action: none;
@@ -2023,42 +2034,91 @@ html.refract .glass {
   margin: 10px 0;
 }
 
-/* ── UNDO TOAST ── */
+/* ── UNDO TOAST (Apple Liquid Glass Capsule) ── */
 .undo-toast {
-  position: fixed;
-  left: 50%;
-  bottom: calc(84px + env(safe-area-inset-bottom, 0px));
-  transform: translateX(-50%) translateY(40px);
-  z-index: 15;
+  position: relative;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  padding: 10px 18px;
+  padding: 10px 16px;
   border-radius: var(--rf);
-  background: #1c1d27;
-  color: #f3f4f6;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  background: color-mix(in srgb, var(--bg) 84%, transparent);
+  color: var(--on);
+  border: 1px solid var(--edge);
+  box-shadow: 0 10px 30px var(--sh), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
   opacity: 0;
+  transform: translateY(20px) scale(0.96);
   pointer-events: none;
-  transition: transform .4s var(--spring), opacity .3s;
-  max-width: calc(100vw - 48px);
-  white-space: nowrap;
+  transition: transform 0.34s var(--spring), opacity 0.24s cubic-bezier(0.2, 0, 0, 1);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .undo-toast {
+    background: var(--bg);
+  }
 }
 
 .undo-toast.show {
-  transform: translateX(-50%) translateY(0);
+  transform: translateY(0) scale(1);
   opacity: 1;
   pointer-events: auto;
 }
 
-.undo-toast button,
-.undo-toast-btn {
-  color: #818cf8;
+.undo-toast.is-exiting {
+  transform: translateY(18px) scale(0.94);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.28s cubic-bezier(0.32, 0, 0.67, 0), opacity 0.24s ease-out;
+}
+
+.undo-toast-label {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--on);
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.undo-toast-label b {
   font-weight: 700;
-  padding: 2px 6px;
+  color: var(--primary);
+}
+
+.undo-toast-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--primary);
+  border: 1px solid color-mix(in srgb, var(--primary) 28%, transparent);
+  border-radius: var(--rf);
+  padding: 6px 12px;
   font-family: inherit;
-  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: transform 0.18s var(--spring), background 0.18s, border-color 0.18s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.undo-toast-btn:active {
+  transform: scale(0.94);
+  background: color-mix(in srgb, var(--primary) 26%, transparent);
+}
+
+.undo-toast-btn:disabled {
+  opacity: 0.5;
+  pointer-events: none;
 }
 
 /* ── PERFORMANCE TIERS & ADAPTIVE GLASS ── */
@@ -2332,9 +2392,9 @@ html.refract .glass {
 
 @media (pointer: coarse) {
   .glass-btn:active:not(:disabled):not(.is-loading) {
-    transform: scale(.97) translateZ(0);
-    opacity: .9;
-    transition-duration: .1s;
+    transform: scale(.965) translateZ(0);
+    filter: brightness(0.93);
+    transition-duration: .09s;
   }
 }
 
@@ -2344,9 +2404,23 @@ html.refract .glass {
     box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 8px 22px var(--sh);
   }
   .glass-btn:active:not(:disabled):not(.is-loading) {
-    transform: scale(.98) translateY(1px);
-    transition-duration: .1s;
+    transform: scale(.965) translateY(1px);
+    filter: brightness(0.93);
+    transition-duration: .09s;
   }
+}
+
+/* Universal tactile compression for interactive glass controls */
+.btn.press:active:not(:disabled),
+.glass-seg-btn:active,
+.glass-chip:active,
+.action-chip:active,
+.quick-submit-btn:active,
+.nav-icon:active,
+.item-del-btn:active {
+  transform: scale(0.965) translateZ(0);
+  filter: brightness(0.93);
+  transition: transform 0.09s ease-out, filter 0.09s ease-out;
 }
 
 .glass-btn:focus-visible {
@@ -2557,11 +2631,23 @@ html.reduced-motion *::after {
 
 /* Scrim GPU handling (zero layout re-rasterization on #app) */
 
-/* ── SCROLL REVEAL ── */
+/* ── SCROLL REVEAL & STAGGERED ENTRANCE ── */
+@keyframes itemEntrance {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .reveal-item {
   opacity: 0;
-  transform: translateY(12px);
-  transition: opacity .4s ease-out, transform .4s var(--spring);
+  transform: translateY(14px) scale(0.97);
+  transition: opacity 0.36s cubic-bezier(0.2, 0, 0, 1), transform 0.42s var(--spring);
+  transition-delay: calc(var(--item-idx, 0) * 35ms);
 }
 
 .reveal-item.revealed {

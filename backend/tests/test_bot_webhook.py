@@ -146,7 +146,8 @@ async def test_bot_command_handlers_execute():
     await handle_start(mock_msg)
     assert mock_msg.answer.called
     args, kwargs = mock_msg.answer.call_args
-    assert "Mating 👋" in args[0]
+    assert "Mating" in args[0]
+    assert "<tg-emoji" in args[0]
     assert "reply_markup" in kwargs
 
     # /ai

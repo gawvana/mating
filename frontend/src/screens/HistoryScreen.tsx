@@ -5,6 +5,7 @@ import { formatCurrency } from "../i18n";
 import { useAppStore } from "../state/useAppStore";
 import { triggerHaptic } from "../telegram/telegram";
 import { HistoryGroup, HistoryItem } from "../types";
+import { IconCheck, IconPlus, IconRefresh, IconScroll } from "../components/Icons";
 
 export const HistoryScreen: React.FC = () => {
   const queryClient = useQueryClient();
@@ -125,7 +126,7 @@ export const HistoryScreen: React.FC = () => {
       {frequentItems.length > 0 && (
         <div className="frequent-section">
           <div className="frequent-header">
-            <span className="frequent-icon">↻</span>
+            <IconRefresh size={16} className="frequent-icon" />
             <span className="frequent-title">Часто покупаете</span>
           </div>
           <div className="frequent-scroll">
@@ -144,7 +145,7 @@ export const HistoryScreen: React.FC = () => {
                   onClick={() => handleAddFrequent(fi)}
                   title="Добавить в список"
                 >
-                  ＋
+                  <IconPlus size={14} />
                 </button>
               </div>
             ))}
@@ -163,7 +164,9 @@ export const HistoryScreen: React.FC = () => {
       {/* Empty state */}
       {!isLoading && groups.length === 0 && (
         <div className="history-empty glass">
-          <div className="empty-icon">📜</div>
+          <div className="empty-icon">
+            <IconScroll size={36} />
+          </div>
           <h3>История пока пуста</h3>
           <p>Когда вы отметите купленные товары, они сохранятся здесь.</p>
         </div>
@@ -254,11 +257,7 @@ export const HistoryScreen: React.FC = () => {
                     onClick={() => toggleRepeatItem(item.id)}
                   >
                     <div className={`preview-checkbox ${isSelected ? "checked" : ""}`}>
-                      {isSelected && (
-                        <svg viewBox="0 0 24 24">
-                          <path d="M20 6L9 17l-5-5" />
-                        </svg>
-                      )}
+                      {isSelected && <IconCheck size={14} strokeWidth={2.4} />}
                     </div>
                     <div className="repeat-item-meta">
                       <span className="repeat-name">{item.name}</span>
